@@ -10,7 +10,7 @@ def load_wsi(file_path):
     return slide
 
 
-def segment_tissue(hsv_img, saturation_threshold=0.05):
+def segment_tissue(hsv_img, saturation_threshold=0.2):
     # Saturation is located in the second channel of the HSV image
     saturation = hsv_img[:, :, 1]
     # Create a binary mask based on the saturation threshold
