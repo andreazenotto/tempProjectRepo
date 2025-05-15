@@ -21,7 +21,7 @@ def segment_tissue(hsv_img, saturation_threshold=0.2):
 
 
 def extract_patches(slide, save_dir, level, patch_size=(224, 224), tissue_threshold=0.6):
-    width, height = slide.dimensions
+    width, height = slide.dimensions[2]
     patch_height, patch_width = patch_size
 
     x_coords = range(0, width - patch_width, patch_width)
@@ -49,9 +49,6 @@ def extract_patches(slide, save_dir, level, patch_size=(224, 224), tissue_thresh
             # Save the patch as a PNG image
             patch_filename = f"patch_{x}_{y}.png"
             patch.save(os.path.join(save_dir, patch_filename))
-            print(f"Patch saved: {patch_filename} with tissue coverage: {tissue_coverage:.2f}")
-        else:
-            print(f"Patch at ({x}, {y}) discarded due to low tissue coverage: {tissue_coverage:.2f}")
 
 
 def load_patches(directory):
