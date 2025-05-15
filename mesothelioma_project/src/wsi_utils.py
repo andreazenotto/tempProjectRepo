@@ -19,7 +19,7 @@ def isWhitePatch(patch, satThresh=15):
 
 
 def isBlackPatch(patch, rgbThresh=40):
-    return True if np.unique(np.where(np.mean(patch, axis = (0,1)) < rgbThresh))[1] <= 2 else False
+    return True if len(np.unique(np.where(np.mean(patch, axis = (0,1)) < rgbThresh))) <= 2 else False
 
 
 def extract_patches(slide, save_dir, level, patch_size=(224, 224), tissue_threshold=0.6):
