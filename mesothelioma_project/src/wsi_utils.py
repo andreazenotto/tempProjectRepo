@@ -18,10 +18,6 @@ def isWhitePatch(patch, satThresh=15):
     return True if np.mean(patch_hsv[:,:,1]) < satThresh else False
 
 
-def isBlackPatch(patch, rgbThresh=40):
-    return True if len(np.unique(np.where(np.mean(patch, axis = (0,1)) < rgbThresh))) <= 2 else False
-
-
 def extract_patches(slide, save_dir, level, patch_size=(224, 224), tissue_threshold=0.6):
     width, height = slide.level_dimensions[level]
     patch_height, patch_width = patch_size
@@ -38,13 +34,11 @@ def extract_patches(slide, save_dir, level, patch_size=(224, 224), tissue_thresh
         region = slide.read_region((x, y), level, patch_size).convert("RGB")
         region = np.array(region)
 
-        if isWhitePatch(region) or isBlackPatch(region):
-            continue
-        
-        patch = Image.fromarray(region)
-        # Save the patch as a PNG image
-        patch_filename = f"patch_{x}_{y}.png"
-        patch.save(os.path.join(save_dir, patch_filename))
+        if not isWhitePatch(region):
+            patch = Image.fromarray(region)
+            # Save the patch as a PNG image
+            patch_filename = f"patch_{x}_{y}.png"
+            patch.save(os.path.join(save_dir, patch_filename))
 
 
 def load_patches(directory):
