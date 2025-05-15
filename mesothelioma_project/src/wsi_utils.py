@@ -21,7 +21,7 @@ def segment_tissue(hsv_img, saturation_threshold=0.2):
 
 
 def extract_patches(slide, save_dir, level, patch_size=(224, 224), tissue_threshold=0.6):
-    width, height = slide.dimensions[2]
+    width, height = slide.dimensions[level]
     patch_height, patch_width = patch_size
 
     x_coords = range(0, width - patch_width, patch_width)
