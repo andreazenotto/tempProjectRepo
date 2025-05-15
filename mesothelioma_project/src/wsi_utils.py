@@ -28,26 +28,30 @@ def extract_patches(slide, save_dir, level, patch_size=(224, 224), tissue_thresh
     y_coords = range(0, height - patch_height, patch_height)
 
     coords = list(product(x_coords, y_coords))
+    os.makedirs(save_dir, exist_ok=True)
     
     # Iterate over all possible patch positions
     for x, y in tqdm(coords, desc="Extracting patches"):
-            # Extract the image region
-            region = slide.read_region((x, y), level, patch_size).convert("RGB")
-            region = np.array(region)
-            
-            # Segment and create the patch mask
-            patch_hsv = rgb2hsv(region)
-            patch_mask = segment_tissue(patch_hsv)
-            
-            # Calculate the tissue coverage percentage in the patch
-            tissue_coverage = np.sum(patch_mask) / (patch_height * patch_width)
-            
-            # If the tissue coverage is sufficient, save the patch
-            if tissue_coverage >= tissue_threshold:
-                patch = Image.fromarray(region)
-                # Save the patch as a PNG image
-                patch_filename = f"patch_{x}_{y}.png"
-                patch.save(os.path.join(save_dir, patch_filename))
+        # Extract the image region
+        region = slide.read_region((x, y), level, patch_size).convert("RGB")
+        region = np.array(region)
+        
+        # Segment and create the patch mask
+        patch_hsv = rgb2hsv(region)
+        patch_mask = segment_tissue(patch_hsv)
+        
+        # Calculate the tissue coverage percentage in the patch
+        tissue_coverage = np.sum(patch_mask) / (patch_height * patch_width)
+        
+        # If the tissue coverage is sufficient, save the patch
+        if tissue_coverage >= tissue_threshold:
+            patch = Image.fromarray(region)
+            # Save the patch as a PNG image
+            patch_filename = f"patch_{x}_{y}.png"
+            patch.save(os.path.join(save_dir, patch_filename))
+            print(f"Patch saved: {patch_filename} with tissue coverage: {tissue_coverage:.2f}")
+        else:
+            print(f"Patch at ({x}, {y}) discarded due to low tissue coverage: {tissue_coverage:.2f}")
 
 
 def load_patches(directory):
