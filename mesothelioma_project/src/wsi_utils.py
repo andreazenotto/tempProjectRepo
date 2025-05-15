@@ -14,7 +14,7 @@ def load_wsi(file_path):
 
 
 def isWhitePatch(patch, satThresh=5):
-    patch_hsv = rgb2hsv(patch)
+    patch_hsv = cv2.cvtColor(patch, cv2.COLOR_RGB2HSV)
     return True if np.mean(patch_hsv[:,:,1]) < satThresh else False
 
 
