@@ -13,13 +13,13 @@ def load_wsi(file_path):
     return slide
 
 
-def isWhitePatch(patch, satThresh=5):
+def isWhitePatch(patch, satThresh=15):
     patch_hsv = cv2.cvtColor(patch, cv2.COLOR_RGB2HSV)
     return True if np.mean(patch_hsv[:,:,1]) < satThresh else False
 
 
 def isBlackPatch(patch, rgbThresh=40):
-    return True if np.all(np.mean(patch, axis = (0,1)) < rgbThresh) else False
+    return True if np.unique(np.where(np.mean(patch, axis = (0,1)) < rgbThresh))[1] <= 2 else False
 
 
 def extract_patches(slide, save_dir, level, patch_size=(224, 224), tissue_threshold=0.6):
