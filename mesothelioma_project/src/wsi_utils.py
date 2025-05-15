@@ -18,7 +18,7 @@ def isWhitePatch(patch, satThresh=15):
     return True if np.mean(patch_hsv[:,:,1]) < satThresh else False
 
 
-def extract_patches(slide, save_dir, level, patch_size=(224, 224), tissue_threshold=0.6):
+def extract_patches(slide, save_dir, level, patch_size=(224, 224)):
     width, height = slide.level_dimensions[level]
     patch_height, patch_width = patch_size
 
@@ -39,6 +39,30 @@ def extract_patches(slide, save_dir, level, patch_size=(224, 224), tissue_thresh
             # Save the patch as a PNG image
             patch_filename = f"patch_{x}_{y}.png"
             patch.save(os.path.join(save_dir, patch_filename))
+
+
+def count_patches(slide, save_dir, level, patch_size=(224, 224)):
+    width, height = slide.level_dimensions[level]
+    patch_height, patch_width = patch_size
+
+    x_coords = range(0, width - patch_width, patch_width)
+    y_coords = range(0, height - patch_height, patch_height)
+
+    coords = list(product(x_coords, y_coords))
+    os.makedirs(save_dir, exist_ok=True)
+
+    count = 0
+    
+    # Iterate over all possible patch positions
+    for x, y in tqdm(coords, desc="Extracting patches"):
+        # Extract the image region
+        region = slide.read_region((x, y), level, patch_size).convert("RGB")
+        region = np.array(region)
+
+        if not isWhitePatch(region):
+            count += 1
+
+    return count
 
 
 def load_patches(directory):
