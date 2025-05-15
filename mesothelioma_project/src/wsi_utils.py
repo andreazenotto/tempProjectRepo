@@ -13,12 +13,12 @@ def load_wsi(file_path):
     return slide
 
 
-def isWhitePatch(patch, satThresh=15):
+def isWhitePatch(patch, satThresh):
     patch_hsv = cv2.cvtColor(patch, cv2.COLOR_RGB2HSV)
     return True if np.mean(patch_hsv[:,:,1]) < satThresh else False
 
 
-def extract_patches(slide, save_dir, level, patch_size=(224, 224)):
+def extract_patches(slide, save_dir, level, threshold, patch_size=(224, 224)):
     width, height = slide.level_dimensions[level]
     patch_height, patch_width = patch_size
 
@@ -34,7 +34,7 @@ def extract_patches(slide, save_dir, level, patch_size=(224, 224)):
         region = slide.read_region((x, y), level, patch_size).convert("RGB")
         region = np.array(region)
 
-        if not isWhitePatch(region):
+        if not isWhitePatch(region, threshold):
             patch = Image.fromarray(region)
             # Save the patch as a PNG image
             patch_filename = f"patch_{x}_{y}.png"
