@@ -54,7 +54,7 @@ def count_patches(slide, save_dir, level, patch_size=(224, 224)):
     count = 0
     
     # Iterate over all possible patch positions
-    for x, y in tqdm(coords, desc="Extracting patches"):
+    for x, y in coords:
         # Extract the image region
         region = slide.read_region((x, y), level, patch_size).convert("RGB")
         region = np.array(region)
