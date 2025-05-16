@@ -29,7 +29,7 @@ def extract_patches(slide, save_dir, level=1, threshold=30, patch_size=(224, 224
     os.makedirs(save_dir, exist_ok=True)
     
     # Iterate over all possible patch positions
-    for x, y in tqdm(coords, desc="Extracting patches"):
+    for x, y in coords:
         # Extract the image region
         region = slide.read_region((x, y), level, patch_size).convert("RGB")
         region = np.array(region)
@@ -61,14 +61,3 @@ def count_patches(slide, level=1, threshold=30, patch_size=(224, 224)):
             count += 1
 
     return count
-
-
-def load_patches(directory):
-    patches = []
-    for filename in os.listdir(directory):
-        if filename.endswith(".png"):
-            img_path = os.path.join(directory, filename)
-            img = Image.open(img_path)
-            patches.append(img)
-    
-    return patches
