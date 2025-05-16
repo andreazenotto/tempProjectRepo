@@ -18,7 +18,7 @@ def isWhitePatch(patch, satThresh):
     return True if np.mean(patch_hsv[:,:,1]) < satThresh else False
 
 
-def extract_patches(slide, save_dir, level, threshold, patch_size=(224, 224)):
+def extract_patches(slide, save_dir, level=1, threshold=30, patch_size=(224, 224)):
     width, height = slide.level_dimensions[level]
     patch_height, patch_width = patch_size
 
@@ -41,15 +41,13 @@ def extract_patches(slide, save_dir, level, threshold, patch_size=(224, 224)):
             patch.save(os.path.join(save_dir, patch_filename))
 
 
-def count_patches(slide, save_dir, level, threshold, patch_size=(224, 224)):
+def count_patches(slide, level=1, threshold=30, patch_size=(224, 224)):
     width, height = slide.level_dimensions[level]
     patch_height, patch_width = patch_size
 
     x_coords = range(0, width - patch_width, patch_width)
     y_coords = range(0, height - patch_height, patch_height)
-
     coords = list(product(x_coords, y_coords))
-    os.makedirs(save_dir, exist_ok=True)
 
     count = 0
     
