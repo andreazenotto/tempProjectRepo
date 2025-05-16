@@ -41,7 +41,7 @@ def extract_patches(slide, save_dir, level, threshold, patch_size=(224, 224)):
             patch.save(os.path.join(save_dir, patch_filename))
 
 
-def count_patches(slide, save_dir, level, patch_size=(224, 224)):
+def count_patches(slide, save_dir, level, threshold, patch_size=(224, 224)):
     width, height = slide.level_dimensions[level]
     patch_height, patch_width = patch_size
 
@@ -59,7 +59,7 @@ def count_patches(slide, save_dir, level, patch_size=(224, 224)):
         region = slide.read_region((x, y), level, patch_size).convert("RGB")
         region = np.array(region)
 
-        if not isWhitePatch(region):
+        if not isWhitePatch(region, threshold):
             count += 1
 
     return count
