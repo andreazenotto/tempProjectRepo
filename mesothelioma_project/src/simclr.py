@@ -1,14 +1,5 @@
 import tensorflow as tf
 import os
-import numpy as np
-from PIL import Image
-
-
-def load_image(image_path):
-    img = Image.open(image_path)
-    img = np.array(img)
-    img = img / 255.0
-    return img
 
 
 def augment(image):
@@ -27,10 +18,11 @@ def augment(image):
 
 
 def process_image(image_path):
-    image = load_image(image_path)
-    augmented_image1 = augment(image)
-    augmented_image2 = augment(image)
-    return augmented_image1, augmented_image2
+    image = tf.io.read_file(image_path)
+    image = tf.image.decode_png(image, channels=3)
+    view1 = augment(image)
+    view2 = augment(image)
+    return view1, view2
 
 
 def shuffle_and_batch(dataset, batch_size):
@@ -54,15 +46,13 @@ def create_dataset(directory):
                     for img_name in os.listdir(wsi_path):
                         img_path = os.path.join(wsi_path, img_name)
                         all_images.append(img_path)
-                        print(f"Added image: {img_path}")
-
 
     # Create a dataset from the list of images
     path_ds = tf.data.Dataset.from_tensor_slices(all_images)
     # Apply the preprocessing function and create pairs of images
     image_ds = path_ds.map(lambda x: process_image(x), num_parallel_calls=tf.data.AUTOTUNE)
     return image_ds
-
+    
 
 def build_model():
     base_model = tf.keras.applications.ResNet50(
@@ -114,7 +104,10 @@ def train_simclr(dataset, epochs=100, batch_size=512):
     for epoch in range(epochs):
         # Shuffle and batch the dataset
         dataset = shuffle_and_batch(dataset, batch_size)
+
+        # Initialize the total loss for this epoch
         total_loss = 0
+
         for step, (view1, view2) in enumerate(dataset):
             with tf.GradientTape() as tape:
                 proj1 = model(view1, training=True)
