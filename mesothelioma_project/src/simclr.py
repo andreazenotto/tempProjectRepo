@@ -9,8 +9,6 @@ def augment(image):
     # Random crop
     image = tf.image.resize_with_crop_or_pad(image, 256, 256)
     image = tf.image.random_crop(image, size=[224, 224, 3])
-    # Random rotation
-    image = tf.image.rot90(image, k=tf.random.uniform(minval=0, maxval=4, dtype=tf.int32))
     # Random brightness and contrast adjustments
     image = tf.image.random_brightness(image, max_delta=0.1)
     image = tf.image.random_contrast(image, lower=0.8, upper=1.2)
