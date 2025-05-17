@@ -54,6 +54,8 @@ def create_dataset(directory):
                     for img_name in os.listdir(wsi_path):
                         img_path = os.path.join(wsi_path, img_name)
                         all_images.append(img_path)
+                        print(f"Added image: {img_path}")
+
 
     # Create a dataset from the list of images
     path_ds = tf.data.Dataset.from_tensor_slices(all_images)
