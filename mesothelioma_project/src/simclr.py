@@ -33,7 +33,14 @@ def process_image(image_path):
     return augmented_image1, augmented_image2
 
 
-def create_dataset(directory, batch_size=32):
+def shuffle_and_batch(dataset, batch_size):
+    dataset = dataset.shuffle(buffer_size=1000)
+    dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(tf.data.AUTOTUNE)
+    return dataset
+
+
+def create_dataset(directory):
     all_images = []
 
     for class_dir in os.listdir(directory):
@@ -52,8 +59,6 @@ def create_dataset(directory, batch_size=32):
     path_ds = tf.data.Dataset.from_tensor_slices(all_images)
     # Apply the preprocessing function and create pairs of images
     image_ds = path_ds.map(lambda x: process_image(x), num_parallel_calls=tf.data.AUTOTUNE)
-    # Add batching and shuffle
-    image_ds = image_ds.shuffle(buffer_size=1000).batch(batch_size).prefetch(tf.data.AUTOTUNE)
     return image_ds
 
 
@@ -74,21 +79,25 @@ def build_model():
     return full_model, base_model
 
 
-def nt_xent_loss(proj_1, proj_2, temperature=0.5):
+def nt_xent_loss(proj_1, proj_2, temperature=0.1):
     batch_size = tf.shape(proj_1)[0]
 
-    # Normalize
+    # L2 normalization for projections (cosine similarity)
     proj_1 = tf.math.l2_normalize(proj_1, axis=1)
     proj_2 = tf.math.l2_normalize(proj_2, axis=1)
 
+    # Concatenate projections: [p1_1, ..., p1_B, p2_1, ..., p2_B] -> (2B, D)
     projections = tf.concat([proj_1, proj_2], axis=0)
 
-    logits = tf.matmul(projections, projections, transpose_b=True) / temperature
+    # Compute logits: similarity between all pairs (sim(z_i, z_j)/τ)
+    similarity_matrix = tf.matmul(projections, projections, transpose_b=True)
+    logits = similarity_matrix / temperature  # (2B, 2B)
 
     # Mask self-similarity
     mask = tf.eye(2 * batch_size)
     logits = logits * (1. - mask) - 1e9 * mask
 
+    # Create labels: the positive for i is i + B if i < B, or i - B
     labels = tf.range(batch_size)
     labels = tf.concat([labels + batch_size, labels], axis=0)
     
@@ -96,11 +105,13 @@ def nt_xent_loss(proj_1, proj_2, temperature=0.5):
     return tf.reduce_mean(loss)
 
 
-def train_simclr(dataset, epochs):
+def train_simclr(dataset, epochs=100, batch_size=512):
     model, base_model = build_model()
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
 
     for epoch in range(epochs):
+        # Shuffle and batch the dataset
+        dataset = shuffle_and_batch(dataset, batch_size)
         total_loss = 0
         for step, (view1, view2) in enumerate(dataset):
             with tf.GradientTape() as tape:
