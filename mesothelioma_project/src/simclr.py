@@ -1,5 +1,14 @@
 import tensorflow as tf
 import os
+import tensorflow_addons as tfa
+
+
+def add_gaussian_noise(image, mean=0.0, stddev=10.0):
+    noise = tf.random.normal(shape=tf.shape(image), mean=mean, stddev=stddev, dtype=tf.float32)
+    image = tf.cast(image, tf.float32)
+    noisy_image = image + noise
+    noisy_image = tf.clip_by_value(noisy_image, 0.0, 255.0)
+    return tf.cast(noisy_image, tf.uint8)
 
 
 def augment(image):
@@ -12,6 +21,10 @@ def augment(image):
     # Random brightness and contrast adjustments
     image = tf.image.random_brightness(image, max_delta=0.1)
     image = tf.image.random_contrast(image, lower=0.8, upper=1.2)
+
+    # gaussian noise
+    image = add_gaussian_noise(image)
+
     return image
 
 
