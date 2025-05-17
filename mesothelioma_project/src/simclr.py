@@ -1,6 +1,5 @@
 import tensorflow as tf
 import os
-import tensorflow_models as tfm
 
 
 def augment(image):
@@ -17,8 +16,6 @@ def augment(image):
     image = tf.image.random_saturation(image, 0.9, 1.1)
     image = tf.image.random_hue(image, max_delta=0.05)
 
-    # Gaussian blur
-    image = tfm.vision.augment.gaussian_filter2d(image, filter_shape=(3, 3), sigma=1.0)
     return image
 
 
