@@ -3,19 +3,15 @@ import os
 
 
 def augment(image):
+    # Horizontal flip
     image = tf.image.random_flip_left_right(image)
     image = tf.image.random_flip_up_down(image)
-
-    # Random crop + resize
-    image = tf.image.random_crop(image, size=[int(0.8 * image.shape[0]), int(0.8 * image.shape[1]), 3])
-    image = tf.image.resize(image, [image.shape[0], image.shape[1]])
-
-    # Color jitter
+    # Random crop
+    image = tf.image.resize_with_crop_or_pad(image, 256, 256)
+    image = tf.image.random_crop(image, size=[224, 224, 3])
+    # Random brightness and contrast adjustments
     image = tf.image.random_brightness(image, max_delta=0.1)
-    image = tf.image.random_contrast(image, 0.9, 1.1)
-    image = tf.image.random_saturation(image, 0.9, 1.1)
-    image = tf.image.random_hue(image, max_delta=0.05)
-
+    image = tf.image.random_contrast(image, lower=0.8, upper=1.2)
     return image
 
 
