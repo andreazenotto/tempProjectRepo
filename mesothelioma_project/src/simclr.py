@@ -1,6 +1,6 @@
 import tensorflow as tf
 import os
-import tensorflow_addons as tfa
+import tensorflow_models as tfm
 
 
 def augment(image):
@@ -18,7 +18,7 @@ def augment(image):
     image = tf.image.random_hue(image, max_delta=0.05)
 
     # Gaussian blur
-    # image = tfa.image.gaussian_filter2d(image, filter_shape=(3, 3), sigma=1.0)
+    image = tfm.vision.augment.gaussian_filter2d(image, filter_shape=(3, 3), sigma=1.0)
     return image
 
 
