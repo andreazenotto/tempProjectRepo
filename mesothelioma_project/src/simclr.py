@@ -1,7 +1,5 @@
 import tensorflow as tf
 import os
-import tensorflow_addons as tfa
-
 
 def add_gaussian_noise(image, mean=0.0, stddev=10.0):
     noise = tf.random.normal(shape=tf.shape(image), mean=mean, stddev=stddev, dtype=tf.float32)
@@ -82,7 +80,30 @@ def build_model():
     return full_model, base_model
 
 
-def nt_xent_loss(proj_1, proj_2, temperature=0.1):
+class SimCLRTrainer(tf.keras.Model):
+    def __init__(self, encoder, temperature=0.1):
+        super().__init__()
+        self.encoder = encoder
+        self.temperature = temperature
+
+    def compile(self, optimizer):
+        super().compile()
+        self.optimizer = optimizer
+
+    def train_step(self, data):
+        view1, view2 = data  # unpack the two views
+
+        with tf.GradientTape() as tape:
+            proj1 = self.encoder(view1, training=True)
+            proj2 = self.encoder(view2, training=True)
+            loss = nt_xent_loss(proj1, proj2, self.temperature)
+
+        grads = tape.gradient(loss, self.encoder.trainable_variables)
+        self.optimizer.apply_gradients(zip(grads, self.encoder.trainable_variables))
+
+        return {"loss": loss}
+
+def nt_xent_loss(proj_1, proj_2, temperature):
     batch_size = tf.shape(proj_1)[0]
 
     # L2 normalization for projections (cosine similarity)
@@ -108,30 +129,36 @@ def nt_xent_loss(proj_1, proj_2, temperature=0.1):
     return tf.reduce_mean(loss)
 
 
-def train_simclr(dataset, epochs=100, batch_size=512):
-    model, base_model = build_model()
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+def train_simclr(dataset, epochs=100, batch_size=128, lr=1e-3):
+    # Strategy to distribute across all available GPUs
+    strategy = tf.distribute.MirroredStrategy()
 
-    for epoch in range(epochs):
-        # Shuffle and batch the dataset
-        dataset = shuffle_and_batch(dataset, batch_size)
+    # Prepare the dataset (shuffling, data augmentation, batching)
+    dataset = shuffle_and_batch(dataset, batch_size)
 
-        # Initialize the total loss for this epoch
-        total_loss = 0
+    with strategy.scope():
+        # Build the SimCLR model
+        full_model, base_model = build_model()
+        simclr_model = SimCLRTrainer(full_model)
+        simclr_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr))
 
-        for step, (view1, view2) in enumerate(dataset):
-            with tf.GradientTape() as tape:
-                proj1 = model(view1, training=True)
-                proj2 = model(view2, training=True)
-                loss = nt_xent_loss(proj1, proj2)
+        # Distribute the dataset across replicas
+        dist_dataset = strategy.experimental_distribute_dataset(dataset)
 
-            grads = tape.gradient(loss, model.trainable_variables)
-            optimizer.apply_gradients(zip(grads, model.trainable_variables))
+        # Define a callback to save the best model weights
+        checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+            filepath='best_simclr_model.h5',
+            save_best_only=True,
+            monitor='loss',
+            mode='min',
+            save_weights_only=True
+        )
 
-            total_loss += loss.numpy()
+    # Training
+    simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback])
 
-        avg_loss = total_loss / (step + 1)
-        print(f"Epoch {epoch+1}: Loss = {avg_loss:.4f}")
-
-    base_model.save_weights("resnet50_simclr_weights.h5")
-    
+    # After training, load the best weights and save only the backbone
+    with strategy.scope():
+        full_model, base_model = build_model()
+        full_model.load_weights('best_simclr_model.h5')
+        base_model.save_weights('best_backbone_weights.h5')
