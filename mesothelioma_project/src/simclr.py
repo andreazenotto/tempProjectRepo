@@ -1,6 +1,7 @@
 import tensorflow as tf
 import os
 
+
 def add_gaussian_noise(image, mean=0.0, stddev=10.0):
     noise = tf.random.normal(shape=tf.shape(image), mean=mean, stddev=stddev, dtype=tf.float32)
     image = tf.cast(image, tf.float32)
@@ -73,9 +74,12 @@ def build_model():
     base_model.trainable = True
 
     inputs = tf.keras.Input(shape=(224, 224, 3))
-    features = base_model(inputs)
-    x = tf.keras.layers.Dense(256, activation='relu')(features)
+    features = base_model(inputs)  # shape: (None, 2048)
+
+    # Projection head come nel paper
+    x = tf.keras.layers.Dense(2048, activation='relu')(features)
     outputs = tf.keras.layers.Dense(128)(x)
+
     full_model = tf.keras.Model(inputs, outputs)
     return full_model, base_model
 
@@ -85,6 +89,9 @@ class SimCLRTrainer(tf.keras.Model):
         super().__init__()
         self.encoder = encoder
         self.temperature = temperature
+
+    def call(self, inputs, training=False):
+        return self.encoder(inputs, training=training)
 
     def compile(self, optimizer):
         super().compile()
@@ -147,7 +154,7 @@ def train_simclr(dataset, epochs=100, batch_size=128, lr=1e-3):
 
         # Define a callback to save the best model weights
         checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-            filepath='best_simclr_model.h5',
+            filepath = 'best_simclr_model.weights.h5',
             save_best_only=True,
             monitor='loss',
             mode='min',
@@ -160,5 +167,5 @@ def train_simclr(dataset, epochs=100, batch_size=128, lr=1e-3):
     # After training, load the best weights and save only the backbone
     with strategy.scope():
         full_model, base_model = build_model()
-        full_model.load_weights('best_simclr_model.h5')
-        base_model.save_weights('best_backbone_weights.h5')
+        full_model.load_weights('best_simclr_model.weights.h5')
+        base_model.save_weights('best_backbone_model.weights.h5')
