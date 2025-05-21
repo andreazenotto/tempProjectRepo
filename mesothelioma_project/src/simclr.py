@@ -85,7 +85,7 @@ def build_model():
 
 
 class SimCLRTrainer(tf.keras.Model):
-    def __init__(self, encoder, temperature=0.1):
+    def __init__(self, encoder, temperature):
         super().__init__()
         self.encoder = encoder
         self.temperature = temperature
@@ -136,7 +136,7 @@ def nt_xent_loss(proj_1, proj_2, temperature):
     return tf.reduce_mean(loss)
 
 
-def train_simclr(dataset, epochs=100, batch_size=128, lr=1e-3):
+def train_simclr(dataset, epochs=100, batch_size=128, lr=1e-3, temperature=0.5):
     # Strategy to distribute across all available GPUs
     strategy = tf.distribute.MirroredStrategy()
 
@@ -146,7 +146,7 @@ def train_simclr(dataset, epochs=100, batch_size=128, lr=1e-3):
     with strategy.scope():
         # Build the SimCLR model
         full_model, base_model = build_model()
-        simclr_model = SimCLRTrainer(full_model)
+        simclr_model = SimCLRTrainer(full_model, temperature)
         simclr_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr))
 
         # Distribute the dataset across replicas
