@@ -1,5 +1,6 @@
 import tensorflow as tf
 import os
+import keras_hub
 
 
 def add_gaussian_noise(image, mean=0.0, stddev=10.0):
@@ -65,16 +66,16 @@ def create_dataset(directory):
     
 
 def build_model():
-    base_model = tf.keras.applications.ResNet50(
-        include_top=False,
-        weights='imagenet',
+    base_model = keras_hub.models.ResNetBackbone.from_preset(
+        "resnet_18_imagenet",
         input_shape=(224, 224, 3),
-        pooling='avg'
+        include_rescaling=False
     )
     base_model.trainable = True
 
     inputs = tf.keras.Input(shape=(224, 224, 3))
-    features = base_model(inputs)  # shape: (None, 2048)
+    features = base_model(inputs)
+    features = tf.keras.layers.GlobalAveragePooling2D()(features)  # shape: (None, 2048)
 
     # Projection head come nel paper
     x = tf.keras.layers.Dense(2048, activation='relu')(features)
