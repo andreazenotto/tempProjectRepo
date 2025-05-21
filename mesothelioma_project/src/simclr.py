@@ -136,7 +136,7 @@ def nt_xent_loss(proj_1, proj_2, temperature):
     return tf.reduce_mean(loss)
 
 
-def train_simclr(dataset, epochs=100, batch_size=128, lr=1e-3, temperature=0.5):
+def train_simclr(dataset, epochs=100, batch_size=128, lr=1e-4, temperature=0.5):
     # Strategy to distribute across all available GPUs
     strategy = tf.distribute.MirroredStrategy()
 
