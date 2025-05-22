@@ -1,5 +1,5 @@
-import tensorflow as tf
 import os
+import tensorflow as tf
 import keras_hub
 
 
@@ -140,7 +140,7 @@ def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25, 
     strategy = tf.distribute.MirroredStrategy()
     dataset = shuffle_and_batch(dataset, batch_size)
 
-    def lr_scheduler_fixed(epoch):
+    def lr_scheduler(epoch):
         factor = pow((1 - (epoch / epochs)), 0.9)
         return lr * factor
 
@@ -152,6 +152,7 @@ def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25, 
 
         dist_dataset = strategy.experimental_distribute_dataset(dataset)
 
+        # Callbacks
         checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
             filepath='best_simclr_model.weights.h5',
             save_best_only=True,
@@ -160,13 +161,16 @@ def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25, 
             save_weights_only=True
         )
 
-    if lr_decay:
-        lr_callback = tf.keras.callbacks.LearningRateScheduler(lr_scheduler_fixed)
-        simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback, lr_callback])
-    else:
+        callbacks = [checkpoint_callback]
+        if lr_decay:
+            callbacks.append(tf.keras.callbacks.LearningRateScheduler(lr_scheduler))
+
+        # Fit model
         simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback])
 
     with strategy.scope():
         full_model, base_model = build_model()
         full_model.load_weights('best_simclr_model.weights.h5')
         base_model.save_weights('best_backbone_model.weights.h5')
+
+    return full_model, base_model

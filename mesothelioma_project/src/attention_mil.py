@@ -7,25 +7,29 @@ def get_images(directory):
     labels = []
     all_images = []
 
-    mapping = { "epithelioid": 0, "sarcomatoid": 1, "biphasic": 2 }
+    # Mapping multilabel (es: biphasic = epithelioid + sarcomatoid)
+    mapping = {
+        "epithelioid": [1, 0, 0],
+        "sarcomatoid": [0, 1, 0],
+        "biphasic": [1, 1, 0]  # oppure [0, 0, 1] se vuoi come classe a parte
+    }
 
     for class_dir in os.listdir(directory):
         class_path = os.path.join(directory, class_dir)
-        class_name = class_dir.split('_')[1]
+        class_name = class_dir.split('_')[1].lower()
         if os.path.isdir(class_path):
-            # For each subfolder (WSI) inside the class folder
             for wsi_dir in os.listdir(class_path):
                 images = []
                 wsi_path = os.path.join(class_path, wsi_dir)
                 if os.path.isdir(wsi_path):
-                    # Add all images from that WSI
                     for img_name in os.listdir(wsi_path):
                         img_path = os.path.join(wsi_path, img_name)
                         image = tf.io.read_file(img_path)
                         image = tf.image.decode_png(image, channels=3)
+                        image = tf.image.resize(image, (224, 224))
                         images.append(image)
                 all_images.append(images)
-                labels.append(mapping[class_name.lower()])
+                labels.append(mapping[class_name])
 
     return all_images, labels
 
@@ -34,15 +38,14 @@ def create_backbone():
     base_model = tf.keras.applications.ResNet50(
         include_top=False,
         weights=None,
-        input_shape=(224,224,3),
-        pooling=None
+        input_shape=(224, 224, 3),
+        pooling='avg'
     )
     return base_model
 
 
 def extract_and_save_features(patches_dir, backbone_weights_path, save_path, batch_size=128):
     all_features = []
-
     backbone_model = create_backbone()
     backbone_model.load_weights(backbone_weights_path)
 
@@ -50,98 +53,95 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
 
     for wsi_images in wsi_list:
         features_list = []
-        # Create a dataset for the patches of this WSI
         wsi_ds = tf.data.Dataset.from_tensor_slices(tf.stack(wsi_images)).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
         for batch in wsi_ds:
-            # Extract features from the backbone (inference mode)
-            features = backbone_model(batch)
+            features = backbone_model(batch, training=False)
             features_list.extend(features.numpy())
 
-        all_features.append(features_list)
+        all_features.append(np.array(features_list))
 
-    features_dict = {"features": np.array(all_features), "labels": np.array(labels)}
+    features_dict = {
+        "features": np.array(all_features, dtype=object),
+        "labels": np.array(labels, dtype=np.float32)
+    }
 
     np.savez_compressed(save_path, **features_dict)
     print(f"Features saved in {save_path}")
 
 
-# class MultiHeadAttentionMIL(tf.keras.layers.Layer):
-#     def __init__(self, embed_dim=256, num_heads=2, top_k=10, dropout_rate=0.1):
-#         super().__init__()
-#         self.num_heads = num_heads
-#         self.embed_dim = embed_dim
-#         self.top_k = top_k
-#         self.dropout_rate = dropout_rate
-        
-#         # Proiezioni lineari per query/key/value
-#         self.mha = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=embed_dim)
-#         self.dropout = tf.keras.layers.Dropout(dropout_rate)
-#         self.norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-#         self.dense = tf.keras.layers.Dense(embed_dim, activation='relu')
-        
-#     def call(self, x, training=False):
-#         # x shape: (batch, patches, features)
-        
-#         # 1) Calcola attenzione: Q=K=V=x
-#         attn_output, attn_scores = self.mha(x, x, return_attention_scores=True, training=training)
-#         attn_output = self.dropout(attn_output, training=training)
-#         out = self.norm(x + attn_output)  # residual + norm
-        
-#         # 2) Patch dropout top-k: prendi i k patches con attenzione maggiore
-#         # attn_scores shape: (batch, num_heads, query_len, key_len)
-#         # Mediamo su heads e query per avere score globale per ogni patch key
-#         avg_attn_scores = tf.reduce_mean(attn_scores, axis=[1,2])  # (batch, key_len)
-        
-#         # Prendi indici top_k per ogni batch
-#         topk_values, topk_indices = tf.math.top_k(avg_attn_scores, k=self.top_k, sorted=False)
-        
-#         # Seleziona i top_k patches
-#         batch_size = tf.shape(x)[0]
-#         batch_indices = tf.range(batch_size)[:, tf.newaxis]
-#         gather_indices = tf.stack([batch_indices, topk_indices], axis=-1)
-        
-#         # Usa tf.gather_nd per selezionare i patches
-#         selected_patches = tf.gather_nd(x, gather_indices)
-        
-#         # 3) Passa i patches selezionati in un dense layer
-#         output = self.dense(selected_patches)  # (batch, top_k, embed_dim)
-        
-#         # Aggrega i patches (esempio: media)
-#         output = tf.reduce_mean(output, axis=1)  # (batch, embed_dim)
-        
-#         return output
+class MultiHeadAttentionMIL(tf.keras.Model):
+    def __init__(self, input_dim, num_classes, num_heads=2, attention_dim=128):
+        super(MultiHeadAttentionMIL, self).__init__()
+        self.attn_V = [tf.keras.layers.Dense(attention_dim, activation='tanh') for _ in range(num_heads)]
+        self.attn_U = [tf.keras.layers.Dense(1) for _ in range(num_heads)]
+        self.classifier = tf.keras.Sequential([
+            tf.keras.layers.Dense(128, activation='relu'),
+            tf.keras.layers.Dense(num_classes, activation='sigmoid')  # multi-label output
+        ])
+
+    def call(self, x):
+        head_outputs = []
+        for V, U in zip(self.attn_V, self.attn_U):
+            A = U(V(x))                           # (num_patches, 1)
+            A = tf.nn.softmax(tf.transpose(A), axis=-1)  # (1, num_patches)
+            M = tf.matmul(A, x)                  # (1, feature_dim)
+            head_outputs.append(M)
+        bag_repr = tf.concat(head_outputs, axis=-1)  # (1, feature_dim * num_heads)
+        return tf.squeeze(self.classifier(bag_repr), axis=0)
 
 
-# def build_full_pipeline(backbone_weights_path, input_shape=(224,224,3), num_classes=3, freeze_backbone=True):
-#     base_model = create_backbone(input_shape)
-#     base_model.load_weights(backbone_weights_path)
-#     if freeze_backbone:
-#         base_model.trainable = False
-
-#     inputs = tf.keras.Input(shape=input_shape)
-#     features = base_model(inputs)  # (batch, features)
-
-#     return features
+def load_npz_data(npz_path):
+    data = np.load(npz_path, allow_pickle=True)
+    return data['features'], data['labels']
 
 
-# def train_full_pipeline(dataset, backbone_weights_path, epochs=100, batch_size=128, lr=1e-4):
-#     strategy = tf.distribute.MirroredStrategy()
-#     dataset = shuffle_and_batch(dataset, batch_size)
+def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay=True):
+    strategy = tf.distribute.MirroredStrategy()
+    features, labels = load_npz_data(npz_path)
+    input_dim = features[0].shape[-1]
+    num_classes = 3
 
-#     with strategy.scope():
-#         model = build_full_pipeline(backbone_weights_path, freeze_backbone=False)
-#         model.compile(
-#             optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
-#             loss='binary_crossentropy',
-#             metrics=['AUC', 'accuracy']
-#         )
-#         checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-#             filepath='best_mil_model.weights.h5',
-#             save_best_only=True,
-#             monitor='val_loss',
-#             mode='min',
-#             save_weights_only=True
-#         )
+    def lr_scheduler(epoch):
+        factor = pow((1 - (epoch / num_epochs)), 0.9)
+        return lr * factor
 
-#     model.fit(dataset, epochs=epochs, callbacks=[checkpoint_callback])
+    # Dataset preparation
+    def generator():
+        for x, y in zip(features, labels):
+            yield x, y
+
+    output_signature = (
+        tf.TensorSpec(shape=(None, input_dim), dtype=tf.float32),  # (num_patches, feature_dim)
+        tf.TensorSpec(shape=(num_classes,), dtype=tf.float32)
+    )
+
+    dataset = tf.data.Dataset.from_generator(generator, output_signature=output_signature)
+    dataset = dataset.shuffle(buffer_size=len(labels)).batch(batch_size)
+
+    with strategy.scope():
+        model = MultiHeadAttentionMIL(input_dim, num_classes)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+        model.compile(
+            optimizer=optimizer,
+            loss=tf.keras.losses.BinaryCrossentropy(),
+            metrics=[tf.keras.metrics.AUC(multi_label=True, name='auc')]
+        )
+
+        dist_dataset = strategy.experimental_distribute_dataset(dataset)
+
+        # Callbacks
+        checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+            filepath='best_attention_mil.weights.h5',
+            save_best_only=True,
+            monitor='loss',
+            mode='min',
+            save_weights_only=True
+        )
+
+        callbacks = [checkpoint_callback]
+        if lr_decay:
+            callbacks.append(tf.keras.callbacks.LearningRateScheduler(lr_scheduler))
+
+        # Fit model
+        model.fit(dist_dataset, epochs=num_epochs, callbacks=callbacks)
