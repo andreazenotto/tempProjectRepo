@@ -1,6 +1,7 @@
 import os
 import tensorflow as tf
 import keras_hub
+import tensorflow_addons as tfa
 
 
 def add_gaussian_noise(image, mean=0.0, stddev=10.0):
