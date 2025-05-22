@@ -136,7 +136,7 @@ def nt_xent_loss(proj_1, proj_2, temperature):
     return tf.reduce_mean(loss)
 
 
-def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25, lr_decay=True):
+def train_simclr(dataset, epochs=50, batch_size=256, lr=2e-4, temperature=0.1, lr_decay=True):
     strategy = tf.distribute.MirroredStrategy()
     dataset = shuffle_and_batch(dataset, batch_size)
 
@@ -147,7 +147,7 @@ def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25, 
     with strategy.scope():
         full_model, base_model = build_model()
         simclr_model = SimCLRTrainer(full_model, temperature)
-        optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+        optimizer = tf.keras.optimizers.experimental.AdamW(learning_rate=lr, weight_decay=1e-5)
         simclr_model.compile(optimizer=optimizer)
 
         dist_dataset = strategy.experimental_distribute_dataset(dataset)
@@ -168,9 +168,6 @@ def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25, 
         # Fit model
         simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback])
 
-    # with strategy.scope():
-    #     full_model, base_model = build_model()
-    #     full_model.load_weights('best_simclr_model.weights.h5')
-    #     base_model.save_weights('best_backbone_model.weights.h5')
-
+    # Save the base model weights
+    full_model.layers[1].save_weights('backbone.weights.h5')
     return full_model, base_model
