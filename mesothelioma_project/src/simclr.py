@@ -1,7 +1,6 @@
 import os
 import tensorflow as tf
 import keras_hub
-import tensorflow_addons as tfa
 
 
 def add_gaussian_noise(image, mean=0.0, stddev=10.0):
@@ -148,7 +147,7 @@ def train_simclr(dataset, epochs=50, batch_size=256, lr=2e-4, temperature=0.1, l
     with strategy.scope():
         full_model, base_model = build_model()
         simclr_model = SimCLRTrainer(full_model, temperature)
-        optimizer = tf.keras.optimizers.experimental.AdamW(learning_rate=lr, weight_decay=1e-5)
+        optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
         simclr_model.compile(optimizer=optimizer)
 
         dist_dataset = strategy.experimental_distribute_dataset(dataset)
