@@ -168,9 +168,9 @@ def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25, 
         # Fit model
         simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback])
 
-    with strategy.scope():
-        full_model, base_model = build_model()
-        full_model.load_weights('best_simclr_model.weights.h5')
-        base_model.save_weights('best_backbone_model.weights.h5')
+    # with strategy.scope():
+    #     full_model, base_model = build_model()
+    #     full_model.load_weights('best_simclr_model.weights.h5')
+    #     base_model.save_weights('best_backbone_model.weights.h5')
 
     return full_model, base_model
