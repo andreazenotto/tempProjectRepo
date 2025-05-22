@@ -21,7 +21,6 @@ def augment(image):
     # Random brightness and contrast adjustments
     image = tf.image.random_brightness(image, max_delta=0.1)
     image = tf.image.random_contrast(image, lower=0.8, upper=1.2)
-
     # gaussian noise
     image = add_gaussian_noise(image)
 
@@ -137,35 +136,35 @@ def nt_xent_loss(proj_1, proj_2, temperature):
     return tf.reduce_mean(loss)
 
 
-def train_simclr(dataset, epochs=100, batch_size=128, lr=1e-4, temperature=0.5):
-    # Strategy to distribute across all available GPUs
+def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25):
     strategy = tf.distribute.MirroredStrategy()
-
-    # Prepare the dataset (shuffling, data augmentation, batching)
     dataset = shuffle_and_batch(dataset, batch_size)
 
+    def lr_scheduler_fixed(epoch):
+        factor = pow((1 - (epoch / epochs)), 0.9)
+        return lr * factor
+
+    lr_callback = tf.keras.callbacks.LearningRateScheduler(lr_scheduler_fixed)
+
     with strategy.scope():
-        # Build the SimCLR model
         full_model, base_model = build_model()
         simclr_model = SimCLRTrainer(full_model, temperature)
-        simclr_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr))
+        optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+        simclr_model.compile(optimizer=optimizer)
 
-        # Distribute the dataset across replicas
         dist_dataset = strategy.experimental_distribute_dataset(dataset)
 
-        # Define a callback to save the best model weights
         checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-            filepath = 'best_simclr_model.weights.h5',
+            filepath='best_simclr_model.weights.h5',
             save_best_only=True,
             monitor='loss',
             mode='min',
             save_weights_only=True
         )
 
-    # Training
-    simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback])
+    # Ora passo entrambi i callback: checkpoint e scheduler
+    simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback, lr_callback])
 
-    # After training, load the best weights and save only the backbone
     with strategy.scope():
         full_model, base_model = build_model()
         full_model.load_weights('best_simclr_model.weights.h5')
