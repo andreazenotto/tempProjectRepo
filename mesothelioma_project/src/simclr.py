@@ -136,15 +136,13 @@ def nt_xent_loss(proj_1, proj_2, temperature):
     return tf.reduce_mean(loss)
 
 
-def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25):
+def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25, lr_decay=True):
     strategy = tf.distribute.MirroredStrategy()
     dataset = shuffle_and_batch(dataset, batch_size)
 
     def lr_scheduler_fixed(epoch):
         factor = pow((1 - (epoch / epochs)), 0.9)
         return lr * factor
-
-    lr_callback = tf.keras.callbacks.LearningRateScheduler(lr_scheduler_fixed)
 
     with strategy.scope():
         full_model, base_model = build_model()
@@ -162,8 +160,11 @@ def train_simclr(dataset, epochs=50, batch_size=128, lr=1e-4, temperature=0.25):
             save_weights_only=True
         )
 
-    # Ora passo entrambi i callback: checkpoint e scheduler
-    simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback, lr_callback])
+    if lr_decay:
+        lr_callback = tf.keras.callbacks.LearningRateScheduler(lr_scheduler_fixed)
+        simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback, lr_callback])
+    else:
+        simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback])
 
     with strategy.scope():
         full_model, base_model = build_model()
