@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import tensorflow as tf
+from simclr import build_model
 
 
 def get_images(directory):
@@ -34,19 +35,9 @@ def get_images(directory):
     return all_images, labels
 
 
-def create_backbone():
-    base_model = tf.keras.applications.ResNet50(
-        include_top=False,
-        weights=None,
-        input_shape=(224, 224, 3),
-        pooling='avg'
-    )
-    return base_model
-
-
 def extract_and_save_features(patches_dir, backbone_weights_path, save_path, batch_size=128):
     all_features = []
-    backbone_model = create_backbone()
+    backbone_model = build_model(weights=False)
     backbone_model.load_weights(backbone_weights_path)
 
     wsi_list, labels = get_images(patches_dir)
@@ -70,6 +61,11 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
     print(f"Features saved in {save_path}")
 
 
+def load_npz_data(npz_path):
+    data = np.load(npz_path, allow_pickle=True)
+    return data['features'], data['labels']
+
+
 class MultiHeadAttentionMIL(tf.keras.Model):
     def __init__(self, input_dim, num_classes, num_heads=2, attention_dim=128):
         super(MultiHeadAttentionMIL, self).__init__()
@@ -89,11 +85,6 @@ class MultiHeadAttentionMIL(tf.keras.Model):
             head_outputs.append(M)
         bag_repr = tf.concat(head_outputs, axis=-1)  # (1, feature_dim * num_heads)
         return tf.squeeze(self.classifier(bag_repr), axis=0)
-
-
-def load_npz_data(npz_path):
-    data = np.load(npz_path, allow_pickle=True)
-    return data['features'], data['labels']
 
 
 def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay=True):

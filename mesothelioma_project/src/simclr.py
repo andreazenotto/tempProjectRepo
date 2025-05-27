@@ -64,12 +64,16 @@ def create_dataset(directory):
     return image_ds
     
 
-def build_model():
+def build_model(weights=True):
     base_model = keras_hub.models.ResNetBackbone.from_preset(
         "resnet_18_imagenet",
+        load_weights=weights,
         input_shape=(224, 224, 3),
         include_rescaling=False
     )
+    if not weights:
+        return base_model
+    
     base_model.trainable = True
 
     inputs = tf.keras.Input(shape=(224, 224, 3))
