@@ -51,6 +51,7 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
 
     with strategy.scope():
         for wsi_images in tqdm(wsi_list, desc="Processing WSIs"):
+            print(wsi_images)
             features_list = []
             path_ds = tf.data.Dataset.from_tensor_slices(wsi_images)
             image_ds = path_ds.map(lambda x: load_image(x), num_parallel_calls=tf.data.AUTOTUNE)
