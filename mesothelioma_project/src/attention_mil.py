@@ -89,15 +89,16 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         ])
 
     def call(self, x):
-        print("Input x shape:", x.shape)
         head_outputs = []
         for V, U in zip(self.attn_V, self.attn_U):
-            A = U(V(x))                           # (num_patches, 1)
-            A = tf.nn.softmax(tf.transpose(A), axis=-1)  # (1, num_patches)
-            M = tf.matmul(A, x)                  # (1, feature_dim)
+            # x shape: (batch_size, num_patches, feature_dim)
+            A = U(V(x))  # shape: (batch_size, num_patches, 1)
+            A = tf.nn.softmax(tf.transpose(A, perm=[0, 2, 1]), axis=-1)  # (batch_size, 1, num_patches)
+            M = tf.matmul(A, x)  # (batch_size, 1, feature_dim)
+            M = tf.squeeze(M, axis=1)  # (batch_size, feature_dim)
             head_outputs.append(M)
-        bag_repr = tf.concat(head_outputs, axis=-1)  # (1, feature_dim * num_heads)
-        return tf.squeeze(self.classifier(bag_repr), axis=0)
+        bag_repr = tf.concat(head_outputs, axis=-1)  # (batch_size, feature_dim * num_heads)
+        return self.classifier(bag_repr)
 
 
 def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay=True):
