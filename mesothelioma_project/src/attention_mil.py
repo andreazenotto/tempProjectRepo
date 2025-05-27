@@ -2,7 +2,7 @@ import os
 import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
-from simclr import build_model
+import keras_hub
 
 
 def load_image(img_path):
@@ -38,6 +38,16 @@ def get_images(directory):
                 labels.append(mapping[class_name])
                 
     return all_images, labels
+
+
+def build_model(version='resnet_18_imagenet'): 
+    # version = 'resnet_18_imagenet' or 'resnet_50_imagenet'
+    base_model = keras_hub.models.ResNetBackbone.from_preset(
+        version,
+        input_shape=(224, 224, 3),
+        include_rescaling=False
+    )
+    return base_model
 
 
 def extract_and_save_features(patches_dir, backbone_weights_path, save_path, batch_size=128):

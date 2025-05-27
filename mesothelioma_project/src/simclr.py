@@ -62,17 +62,15 @@ def create_dataset(directory):
     # Apply the preprocessing function and create pairs of images
     image_ds = path_ds.map(lambda x: process_image(x), num_parallel_calls=tf.data.AUTOTUNE)
     return image_ds
-    
+ 
 
-def build_model(weights=True):
+def build_model(version='resnet_18_imagenet'): 
+    # version = 'resnet_18_imagenet' or 'resnet_50_imagenet'
     base_model = keras_hub.models.ResNetBackbone.from_preset(
-        "resnet_18_imagenet",
-        load_weights=weights,
+        version,
         input_shape=(224, 224, 3),
         include_rescaling=False
     )
-    if not weights:
-        return base_model
     
     base_model.trainable = True
 
@@ -81,7 +79,7 @@ def build_model(weights=True):
     features = tf.keras.layers.GlobalAveragePooling2D()(features)
 
     # Projection head come nel paper
-    x = tf.keras.layers.Dense(256, activation='relu')(features)
+    x = tf.keras.layers.Dense(int(0.5 * features.shape[1]), activation='relu')(features)
     outputs = tf.keras.layers.Dense(128)(x)
 
     full_model = tf.keras.Model(inputs, outputs)
