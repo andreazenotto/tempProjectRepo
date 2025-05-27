@@ -29,8 +29,7 @@ def get_images(directory):
                         if not os.path.isfile(img_path):
                             print(f"Skipping {img_path}, not a file.")
                             continue
-                        image = tf.image.resize(tf.image.decode_png(tf.io.read_file(img_path), channels=3), (224, 224))
-                        images.append(image)
+                        images.append(tf.image.resize(tf.image.decode_png(tf.io.read_file(img_path), channels=3), (224, 224)))
                 all_images.append(images)
                 labels.append(mapping[class_name])
 
