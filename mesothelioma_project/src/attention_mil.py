@@ -89,6 +89,7 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         ])
 
     def call(self, x):
+        print("Input x shape:", x.shape)
         head_outputs = []
         for V, U in zip(self.attn_V, self.attn_U):
             A = U(V(x))                           # (num_patches, 1)
@@ -120,7 +121,7 @@ def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_
     )
 
     dataset = tf.data.Dataset.from_generator(generator, output_signature=output_signature)
-    dataset = dataset.shuffle(buffer_size=len(labels)).batch(batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
+    dataset = dataset.shuffle(buffer_size=len(labels)).batch(batch_size)
 
     model = MultiHeadAttentionMIL(input_dim, num_classes)
     optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
