@@ -29,9 +29,7 @@ def get_images(directory):
                         if not os.path.isfile(img_path):
                             print(f"Skipping {img_path}, not a file.")
                             continue
-                        image = tf.io.read_file(img_path)
-                        image = tf.image.decode_png(image, channels=3)
-                        image = tf.image.resize(image, (224, 224))
+                        image = tf.image.resize(tf.image.decode_png(tf.io.read_file(img_path), channels=3), (224, 224))
                         images.append(image)
                 all_images.append(images)
                 labels.append(mapping[class_name])
@@ -59,6 +57,7 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
                 features_list.extend(features.numpy())
 
             all_features.append(np.array(features_list))
+            break  # Remove this line to process all WSIs
 
     features_dict = {
         "features": np.array(all_features, dtype=object),
