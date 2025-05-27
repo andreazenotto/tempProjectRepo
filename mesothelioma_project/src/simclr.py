@@ -78,10 +78,10 @@ def build_model(weights=True):
 
     inputs = tf.keras.Input(shape=(224, 224, 3))
     features = base_model(inputs)
-    features = tf.keras.layers.GlobalAveragePooling2D()(features)  # shape: (None, 2048)
+    features = tf.keras.layers.GlobalAveragePooling2D()(features)
 
     # Projection head come nel paper
-    x = tf.keras.layers.Dense(2048, activation='relu')(features)
+    x = tf.keras.layers.Dense(256, activation='relu')(features)
     outputs = tf.keras.layers.Dense(128)(x)
 
     full_model = tf.keras.Model(inputs, outputs)
