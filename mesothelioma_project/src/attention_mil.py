@@ -100,6 +100,7 @@ class MultiHeadAttentionMIL(tf.keras.Model):
 
 
 def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay=True):
+    strategy = tf.distribute.MirroredStrategy()
     features, labels = load_npz_data(npz_path)
     input_dim = features[0].shape[-1]
     num_classes = 2
@@ -111,7 +112,8 @@ def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_
     # Dataset preparation
     def generator():
         for x, y in zip(features, labels):
-            yield x, y
+            if x.shape[0] > 0:
+                yield x, y
 
     output_signature = (
         tf.TensorSpec(shape=(None, input_dim), dtype=tf.float32),  # (num_patches, feature_dim)
@@ -119,29 +121,31 @@ def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_
     )
 
     dataset = tf.data.Dataset.from_generator(generator, output_signature=output_signature)
-    dataset = dataset.shuffle(buffer_size=len(labels)).batch(batch_size)
+    dataset = dataset.shuffle(buffer_size=len(labels)).batch(batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
 
-    
-    model = MultiHeadAttentionMIL(input_dim, num_classes)
-    optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
-    model.compile(
-        optimizer=optimizer,
-        loss=tf.keras.losses.BinaryCrossentropy(),
-        metrics=[tf.keras.metrics.AUC(multi_label=True, name='auc')]
-    )
+    with strategy.scope():
+        model = MultiHeadAttentionMIL(input_dim, num_classes)
+        optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
+        model.compile(
+            optimizer=optimizer,
+            loss=tf.keras.losses.BinaryCrossentropy(),
+            metrics=[tf.keras.metrics.AUC(multi_label=True, name='auc')]
+        )
 
-    # Callbacks
-    checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-        filepath='best_attention_mil.weights.h5',
-        save_best_only=True,
-        monitor='loss',
-        mode='min',
-        save_weights_only=True
-    )
+        dist_dataset = strategy.experimental_distribute_dataset(dataset)
 
-    callbacks = [checkpoint_callback]
-    if lr_decay:
-        callbacks.append(tf.keras.callbacks.LearningRateScheduler(lr_scheduler))
+        # Callbacks
+        checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+            filepath='best_attention_mil.weights.h5',
+            save_best_only=True,
+            monitor='loss',
+            mode='min',
+            save_weights_only=True
+        )
 
-    # Fit model
-    model.fit(dataset, epochs=num_epochs, callbacks=callbacks)
+        callbacks = [checkpoint_callback]
+        if lr_decay:
+            callbacks.append(tf.keras.callbacks.LearningRateScheduler(lr_scheduler))
+
+        # Fit model
+        model.fit(dist_dataset, epochs=num_epochs, callbacks=callbacks)
