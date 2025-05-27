@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from tqdm import tqdm
 import tensorflow as tf
 from simclr import build_model
 
@@ -10,9 +11,9 @@ def get_images(directory):
 
     # Mapping multilabel (es: biphasic = epithelioid + sarcomatoid)
     mapping = {
-        "epithelioid": [1, 0, 0],
-        "sarcomatoid": [0, 1, 0],
-        "biphasic": [1, 1, 0]  # oppure [0, 0, 1] se vuoi come classe a parte
+        "epithelioid": [1, 0],
+        "sarcomatoid": [0, 1],
+        "biphasic": [1, 1]
     }
 
     for class_dir in os.listdir(directory):
@@ -42,15 +43,18 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
 
     wsi_list, labels = get_images(patches_dir)
 
-    for wsi_images in wsi_list:
-        features_list = []
-        wsi_ds = tf.data.Dataset.from_tensor_slices(tf.stack(wsi_images)).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    strategy = tf.distribute.MirroredStrategy()
 
-        for batch in wsi_ds:
-            features = backbone_model(batch, training=False)
-            features_list.extend(features.numpy())
+    with strategy.scope():
+        for wsi_images in tqdm(wsi_list, desc="Processing WSIs"):
+            features_list = []
+            wsi_ds = tf.data.Dataset.from_tensor_slices(tf.stack(wsi_images)).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
-        all_features.append(np.array(features_list))
+            for batch in wsi_ds:
+                features = backbone_model(batch, training=False)
+                features_list.extend(features.numpy())
+
+            all_features.append(np.array(features_list))
 
     features_dict = {
         "features": np.array(all_features, dtype=object),
@@ -112,7 +116,7 @@ def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_
 
     with strategy.scope():
         model = MultiHeadAttentionMIL(input_dim, num_classes)
-        optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+        optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
         model.compile(
             optimizer=optimizer,
             loss=tf.keras.losses.BinaryCrossentropy(),
