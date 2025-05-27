@@ -50,7 +50,8 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
     strategy = tf.distribute.MirroredStrategy()
 
     with strategy.scope():
-        for wsi_images in tqdm(wsi_list, desc="Processing WSIs"):
+        for wsi_images in wsi_list:
+            print(f"Processing WSI with {len(wsi_images)} images...")
             features_list = []
             path_ds = tf.data.Dataset.from_tensor_slices(wsi_images)
             image_ds = path_ds.map(lambda x: load_image(x), num_parallel_calls=tf.data.AUTOTUNE)
