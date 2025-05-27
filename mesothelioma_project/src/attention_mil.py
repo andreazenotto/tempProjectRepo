@@ -58,6 +58,7 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
 
             for batch in wsi_ds:
                 features = backbone_model(batch, training=False)
+                features = tf.keras.layers.GlobalAveragePooling2D()(features)
                 features_list.extend(features.numpy())
 
             all_features.append(np.array(features_list))
