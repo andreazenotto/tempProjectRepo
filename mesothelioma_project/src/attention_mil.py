@@ -44,7 +44,8 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
     backbone_model = build_model(weights=False)
     backbone_model.load_weights(backbone_weights_path)
 
-    wsi_list, labels = get_images(patches_dir)
+    with tf.device('/CPU:0'):
+        wsi_list, labels = get_images(patches_dir)
 
     strategy = tf.distribute.MirroredStrategy()
 
