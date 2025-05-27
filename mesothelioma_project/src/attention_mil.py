@@ -26,6 +26,9 @@ def get_images(directory):
                 if os.path.isdir(wsi_path):
                     for img_name in os.listdir(wsi_path):
                         img_path = os.path.join(wsi_path, img_name)
+                        if not os.path.isfile(img_path):
+                            print(f"Skipping {img_path}, not a file.")
+                            continue
                         image = tf.io.read_file(img_path)
                         image = tf.image.decode_png(image, channels=3)
                         image = tf.image.resize(image, (224, 224))
