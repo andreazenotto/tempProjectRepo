@@ -52,7 +52,7 @@ def build_model(version='resnet_18_imagenet'):
 
 def extract_and_save_features(patches_dir, backbone_weights_path, save_path, batch_size=128):
     all_features = []
-    backbone_model = build_model(weights=False)
+    backbone_model = build_model()
     backbone_model.load_weights(backbone_weights_path)
 
     wsi_list, labels = get_images(patches_dir)
