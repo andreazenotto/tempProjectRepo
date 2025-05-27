@@ -20,7 +20,7 @@ def get_images(directory):
         class_path = os.path.join(directory, class_dir)
         class_name = class_dir.split('_')[1].lower()
         if os.path.isdir(class_path):
-            for wsi_dir in os.listdir(class_path):
+            for wsi_dir in tqdm(os.listdir(class_path), desc=f"Processing {class_name}"):
                 images = []
                 wsi_path = os.path.join(class_path, wsi_dir)
                 if os.path.isdir(wsi_path):
@@ -98,7 +98,7 @@ def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_
     strategy = tf.distribute.MirroredStrategy()
     features, labels = load_npz_data(npz_path)
     input_dim = features[0].shape[-1]
-    num_classes = 3
+    num_classes = 2
 
     def lr_scheduler(epoch):
         factor = pow((1 - (epoch / num_epochs)), 0.9)
