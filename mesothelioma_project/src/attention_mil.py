@@ -62,7 +62,6 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
                 features_list.extend(features.numpy())
 
             all_features.append(np.array(features_list))
-            break  # Remove this line to process all WSIs
 
     features_dict = {
         "features": np.array(all_features, dtype=object),
