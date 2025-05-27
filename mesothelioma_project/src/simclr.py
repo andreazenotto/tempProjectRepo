@@ -79,7 +79,10 @@ def build_model(version='resnet_18_imagenet'):
     features = tf.keras.layers.GlobalAveragePooling2D()(features)
 
     # Projection head come nel paper
-    x = tf.keras.layers.Dense(int(0.5 * features.shape[1]), activation='relu')(features)
+    if version == 'resnet_18_imagenet':
+        x = tf.keras.layers.Dense(512, activation='relu')(features)
+    elif version == 'resnet_50_imagenet':
+        x = tf.keras.layers.Dense(2048, activation='relu')(features)
     outputs = tf.keras.layers.Dense(128)(x)
 
     full_model = tf.keras.Model(inputs, outputs)
