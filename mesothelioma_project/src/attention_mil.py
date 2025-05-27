@@ -5,6 +5,13 @@ import tensorflow as tf
 from simclr import build_model
 
 
+def load_image(img_path):
+    image = tf.io.read_file(img_path)
+    image = tf.image.decode_png(image, channels=3)
+    # image = tf.image.resize(image, [224, 224])
+    return image
+
+
 def get_images(directory):
     labels = []
     all_images = []
@@ -26,14 +33,15 @@ def get_images(directory):
                 if os.path.isdir(wsi_path):
                     for img_name in os.listdir(wsi_path):
                         img_path = os.path.join(wsi_path, img_name)
-                        if not os.path.isfile(img_path):
-                            print(f"Skipping {img_path}, not a file.")
-                            continue
-                        images.append(tf.image.resize(tf.image.decode_png(tf.io.read_file(img_path), channels=3), (224, 224)))
+                        images.append(img_path)
                 all_images.append(images)
                 labels.append(mapping[class_name])
 
-    return all_images, labels
+    # Create a dataset from the list of images
+    path_ds = tf.data.Dataset.from_tensor_slices(all_images)
+    # Apply the preprocessing function and create pairs of images
+    image_ds = path_ds.map(lambda x: load_image(x), num_parallel_calls=tf.data.AUTOTUNE)
+    return image_ds, labels
 
 
 def extract_and_save_features(patches_dir, backbone_weights_path, save_path, batch_size=128):
@@ -41,8 +49,7 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
     backbone_model = build_model(weights=False)
     backbone_model.load_weights(backbone_weights_path)
 
-    with tf.device('/CPU:0'):
-        wsi_list, labels = get_images(patches_dir)
+    wsi_list, labels = get_images(patches_dir)
 
     strategy = tf.distribute.MirroredStrategy()
 
