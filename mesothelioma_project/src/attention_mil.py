@@ -40,23 +40,20 @@ def get_images(directory):
     return all_images, labels
 
 
-def build_model(version='resnet_18_imagenet'): 
+def load_model(backbone_weights_path, version='resnet_18_imagenet'): 
     # version = 'resnet_18_imagenet' or 'resnet_50_imagenet'
-    base_model = keras_hub.models.ResNetBackbone.from_preset(
+    backbone_model = keras_hub.models.ResNetBackbone.from_preset(
         version,
         input_shape=(224, 224, 3),
         include_rescaling=False
     )
-    return base_model
-
-
-def extract_and_save_features(patches_dir, backbone_weights_path, save_path, batch_size=128):
-    all_features = []
-    backbone_model = build_model()
     backbone_model.load_weights(backbone_weights_path)
+    return backbone_model
 
+
+def extract_and_save_features(patches_dir, backbone_model, save_path, batch_size=128):
+    all_features = []
     wsi_list, labels = get_images(patches_dir)
-
     strategy = tf.distribute.MirroredStrategy()
 
     with strategy.scope():
@@ -157,3 +154,4 @@ def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_
 
     # Fit model
     model.fit(dataset, epochs=num_epochs, callbacks=callbacks)
+    return model

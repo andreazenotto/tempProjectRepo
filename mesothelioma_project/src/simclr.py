@@ -138,7 +138,7 @@ def nt_xent_loss(proj_1, proj_2, temperature):
     return tf.reduce_mean(loss)
 
 
-def train_simclr(dataset, epochs=50, batch_size=256, lr=2e-4, temperature=0.1, lr_decay=True):
+def train_simclr(dataset, resnet_version='resnet_18_imagenet', epochs=50, batch_size=256, temperature=0.1, lr=2e-4, lr_decay=True):
     strategy = tf.distribute.MirroredStrategy()
     dataset = shuffle_and_batch(dataset, batch_size)
 
@@ -147,7 +147,7 @@ def train_simclr(dataset, epochs=50, batch_size=256, lr=2e-4, temperature=0.1, l
         return lr * factor
 
     with strategy.scope():
-        full_model, base_model = build_model()
+        full_model, base_model = build_model(resnet_version)
         simclr_model = SimCLRTrainer(full_model, temperature)
         optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
         simclr_model.compile(optimizer=optimizer)
