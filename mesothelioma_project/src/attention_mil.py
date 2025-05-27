@@ -50,8 +50,7 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
     strategy = tf.distribute.MirroredStrategy()
 
     with strategy.scope():
-        for wsi_images in wsi_list:
-            print(f"Processing WSI with {len(wsi_images)} images...")
+        for wsi_images in tqdm(wsi_list, desc="Extracting features"):
             features_list = []
             path_ds = tf.data.Dataset.from_tensor_slices(wsi_images)
             image_ds = path_ds.map(lambda x: load_image(x), num_parallel_calls=tf.data.AUTOTUNE)
@@ -68,7 +67,8 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
         "labels": np.array(labels, dtype=np.float32)
     }
 
-    np.savez_compressed(save_path, **features_dict)
+    print(f"Saving features to {save_path}")
+    np.savez_compressed(os.path.join(save_path, "features"), **features_dict)
     print(f"Features saved in {save_path}")
 
 
