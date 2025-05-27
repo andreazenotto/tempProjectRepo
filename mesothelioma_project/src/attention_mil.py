@@ -36,12 +36,8 @@ def get_images(directory):
                         images.append(img_path)
                 all_images.append(images)
                 labels.append(mapping[class_name])
-
-    # Create a dataset from the list of images
-    path_ds = tf.data.Dataset.from_tensor_slices(all_images)
-    # Apply the preprocessing function and create pairs of images
-    image_ds = path_ds.map(lambda x: load_image(x), num_parallel_calls=tf.data.AUTOTUNE)
-    return image_ds, labels
+                
+    return all_images, labels
 
 
 def extract_and_save_features(patches_dir, backbone_weights_path, save_path, batch_size=128):
@@ -56,7 +52,9 @@ def extract_and_save_features(patches_dir, backbone_weights_path, save_path, bat
     with strategy.scope():
         for wsi_images in tqdm(wsi_list, desc="Processing WSIs"):
             features_list = []
-            wsi_ds = tf.data.Dataset.from_tensor_slices(tf.stack(wsi_images)).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+            path_ds = tf.data.Dataset.from_tensor_slices(wsi_images)
+            image_ds = path_ds.map(lambda x: load_image(x), num_parallel_calls=tf.data.AUTOTUNE)
+            wsi_ds = tf.data.Dataset.from_tensor_slices(tf.stack(image_ds)).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
             for batch in wsi_ds:
                 features = backbone_model(batch, training=False)
