@@ -159,7 +159,7 @@ def train_simclr(dataset, resnet_version='resnet_18_imagenet', epochs=50, batch_
 
         # Callbacks
         checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-            filepath='best_simclr_model.weights.h5',
+            filepath='best_simclr_model.h5',
             save_best_only=True,
             monitor='loss',
             mode='min',
