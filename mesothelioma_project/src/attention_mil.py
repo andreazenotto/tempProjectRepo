@@ -40,7 +40,7 @@ def get_images(directory):
     return all_images, labels
 
 
-def load_model(backbone_weights_path, version='resnet_18_imagenet'): 
+def load_model(backbone_weights_path, version='resnet_50_imagenet'): 
     # version = 'resnet_18_imagenet' or 'resnet_50_imagenet'
     backbone_model = keras_hub.models.ResNetBackbone.from_preset(
         version,
@@ -108,7 +108,7 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         return self.classifier(bag_repr)
 
 
-def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay=True):
+def train_attention_mil(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay=True):
     features, labels = load_npz_data(npz_path)
     input_dim = features[0].shape[-1]
     num_classes = 2
@@ -154,4 +154,5 @@ def train_attention_mil_dist(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_
 
     # Fit model
     model.fit(dataset, epochs=num_epochs, callbacks=callbacks)
+    
     return model
