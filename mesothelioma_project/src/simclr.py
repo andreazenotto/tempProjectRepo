@@ -146,7 +146,7 @@ def train_simclr(dataset, resnet_version='resnet_18_imagenet', epochs=50, batch_
     dataset = shuffle_and_batch(dataset, batch_size)
 
     def lr_scheduler(epoch):
-        factor = pow((1 - (epoch / epochs)), 0.9)
+        factor = pow((1 - (epoch / 50)), 0.9)
         return lr * factor
 
     with strategy.scope():
