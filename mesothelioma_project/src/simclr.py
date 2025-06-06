@@ -178,7 +178,7 @@ def train_simclr(dataset, resnet_version='resnet_50_imagenet', start_epoch = 0, 
             callbacks.append(tf.keras.callbacks.LearningRateScheduler(lr_scheduler))
 
         # Fit model
-        simclr_model.fit(dist_dataset, epochs=end_epoch, callbacks=[checkpoint_callback])
+        simclr_model.fit(dist_dataset, epochs=end_epoch-start_epoch, callbacks=[checkpoint_callback])
 
     if end_epoch == total_epochs:
         print("Saving the best backbone weights...")
