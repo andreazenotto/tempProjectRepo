@@ -64,7 +64,7 @@ def create_dataset(directory):
     return image_ds
  
 
-def build_model(version='resnet_18_imagenet'): 
+def build_model(version='resnet_50_imagenet'): 
     # version = 'resnet_18_imagenet' or 'resnet_50_imagenet'
     base_model = keras_hub.models.ResNetBackbone.from_preset(
         version,
@@ -141,16 +141,23 @@ def nt_xent_loss(proj_1, proj_2, temperature):
     return tf.reduce_mean(loss)
 
 
-def train_simclr(dataset, resnet_version='resnet_18_imagenet', epochs=50, batch_size=256, temperature=0.1, lr=2e-4, lr_decay=True):
+# end epoch = 20 is due to the fact that kaggle only hanlde 20 epochs; total_epochs can be 40 or 60, to not restart the training more than 2 times
+def train_simclr(dataset, resnet_version='resnet_50_imagenet', start_epoch = 0, end_epoch = 20, total_epochs = 40, batch_size=128, temperature=0.5, lr=2e-4, lr_decay=True):
     strategy = tf.distribute.MirroredStrategy()
     dataset = shuffle_and_batch(dataset, batch_size)
+    model_path = 'best_backbone.weights.keras'
 
     def lr_scheduler(epoch):
-        factor = pow((1 - (epoch / 50)), 0.9)
+        factor = pow((1 - (epoch / total_epochs)), 0.9)
         return lr * factor
-
+    lr = lr_scheduler(start_epoch) if lr_decay else lr
+   
     with strategy.scope():
-        full_model, base_model = build_model(resnet_version)
+        if start_epoch != 0: 
+            print(f"Resuming from epoch {start_epoch} with LR={lr:.6f}")
+            full_model = tf.keras.models.load_model(model_path)
+        else:
+            full_model, base_model = build_model(resnet_version)
         simclr_model = SimCLRTrainer(full_model, temperature)
         optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
         simclr_model.compile(optimizer=optimizer)
@@ -170,9 +177,11 @@ def train_simclr(dataset, resnet_version='resnet_18_imagenet', epochs=50, batch_
             callbacks.append(tf.keras.callbacks.LearningRateScheduler(lr_scheduler))
 
         # Fit model
-        simclr_model.fit(dist_dataset, epochs=epochs, callbacks=[checkpoint_callback])
+        simclr_model.fit(dist_dataset, epochs=end_epoch, callbacks=[checkpoint_callback])
 
-        full_model = tf.keras.models.load_model("best_simclr_model.keras")
-        full_model.layers[1].save_weights("best_backbone_weights.keras")
+    # Save the best backbone weights
+    print("Saving the best model and its backbone weights...")
+    full_model = tf.keras.models.load_model("best_simclr_model.keras")
+    full_model.layers[1].save_weights("best_backbone_weights.keras")
 
-    return full_model, base_model
+    return full_model
