@@ -150,12 +150,13 @@ def train_simclr(dataset, resnet_version='resnet_50_imagenet', start_epoch = 0, 
     def lr_scheduler(epoch):
         factor = pow((1 - (epoch / total_epochs)), 0.9)
         return lr * factor
+    lr = lr_scheduler(start_epoch) if lr_decay else lr
    
     with strategy.scope():
         full_model = build_model(resnet_version)
         simclr_model = SimCLRTrainer(full_model, temperature)
         if start_epoch > 0: 
-            print(f"Resuming from epoch {start_epoch} with LR={lr_scheduler(start_epoch):.6f}")
+            print(f"Resuming from epoch {start_epoch} with LR={lr:.6f}")
             simclr_model.build(input_shape=(None, 224, 224, 3))
             simclr_model.load_weights(model_path)
         optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
