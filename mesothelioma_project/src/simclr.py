@@ -145,7 +145,7 @@ def nt_xent_loss(proj_1, proj_2, temperature):
 def train_simclr(dataset, resnet_version='resnet_50_imagenet', start_epoch = 1, end_epoch = 20, total_epochs = 60, batch_size=128, temperature=0.5, lr=2e-4, lr_decay=True):
     strategy = tf.distribute.MirroredStrategy()
     dataset = shuffle_and_batch(dataset, batch_size)
-    model_path = f'simclr_model_epoch{start_epoch}.weights.h5'
+    model_path = f'simclr_model_epoch{start_epoch-1}.weights.h5'
 
     def lr_scheduler(epoch):
         factor = pow((1 - (epoch / total_epochs)), 0.9)
