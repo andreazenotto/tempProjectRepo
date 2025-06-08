@@ -142,10 +142,10 @@ def nt_xent_loss(proj_1, proj_2, temperature):
 
 
 # end epoch = 20 is due to the fact that kaggle only hanlde 20 epochs; total_epochs can be 40 or 60, to not restart the training more than 2 times
-def train_simclr(dataset, resnet_version='resnet_50_imagenet', start_epoch = 1, end_epoch = 20, total_epochs = 60, batch_size=128, temperature=0.5, lr=2e-4, lr_decay=True):
+def train_simclr(dataset, resnet_version='resnet_50_imagenet', start_epoch = 0, end_epoch = 20, total_epochs = 60, batch_size=128, temperature=0.5, lr=2e-4, lr_decay=True):
     strategy = tf.distribute.MirroredStrategy()
     dataset = shuffle_and_batch(dataset, batch_size)
-    model_path = f'simclr_model_epoch{start_epoch-1}.weights.h5'
+    model_path = f'simclr_model_epoch{start_epoch}.weights.h5'
 
     def lr_scheduler(epoch):
         factor = pow((1 - (epoch / total_epochs)), 0.9)
@@ -155,7 +155,7 @@ def train_simclr(dataset, resnet_version='resnet_50_imagenet', start_epoch = 1, 
     with strategy.scope():
         full_model = build_model(resnet_version)
         simclr_model = SimCLRTrainer(full_model, temperature)
-        if start_epoch > 1: 
+        if start_epoch > 0: 
             print(f"Resuming from epoch {start_epoch} with LR={lr:.6f}")
             simclr_model.build(input_shape=(None, 224, 224, 3))
             simclr_model.load_weights(model_path)
