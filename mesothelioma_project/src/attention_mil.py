@@ -51,23 +51,32 @@ def load_model(backbone_weights_path, version='resnet_50_imagenet'):
     return backbone_model
 
 
-def extract_and_save_features(patches_dir, backbone_dir, save_path, batch_size=128):
+def extract_and_save_features(patches_dir, backbone_model, save_path, batch_size=128):
     all_features = []
     wsi_list, labels = get_images(patches_dir)
     strategy = tf.distribute.MirroredStrategy()
 
     with strategy.scope():
-        backbone_model = load_model(backbone_dir)
+        @tf.function
+        def extract_step(batch):
+            features = backbone_model(batch, training=False)
+            features = tf.keras.layers.GlobalAveragePooling2D()(features)
+            return features
+
         for wsi_images in tqdm(wsi_list, desc="Extracting features"):
             features_list = []
             path_ds = tf.data.Dataset.from_tensor_slices(wsi_images)
             image_ds = path_ds.map(lambda x: load_image(x), num_parallel_calls=tf.data.AUTOTUNE)
-            wsi_ds = image_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+            image_ds = image_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+            
+            # Distribute the dataset
+            dist_ds = strategy.experimental_distribute_dataset(image_ds)
 
-            for batch in wsi_ds:
-                features = backbone_model(batch, training=False)
-                features = tf.keras.layers.GlobalAveragePooling2D()(features)
-                features_list.extend(features.numpy())
+            for dist_batch in dist_ds:
+                per_replica_features = strategy.run(extract_step, args=(dist_batch,))
+                # Aggregate results from all replicas
+                batch_features = tf.concat(strategy.gather(per_replica_features, axis=0), axis=0)
+                features_list.extend(batch_features.numpy())
 
             all_features.append(np.array(features_list))
 
