@@ -51,12 +51,13 @@ def load_model(backbone_weights_path, version='resnet_50_imagenet'):
     return backbone_model
 
 
-def extract_and_save_features(patches_dir, backbone_model, save_path, batch_size=128):
+def extract_and_save_features(patches_dir, backbone_dir, save_path, batch_size=128):
     all_features = []
     wsi_list, labels = get_images(patches_dir)
     strategy = tf.distribute.MirroredStrategy()
 
     with strategy.scope():
+        backbone_model = load_model(backbone_dir)
         for wsi_images in tqdm(wsi_list, desc="Extracting features"):
             features_list = []
             path_ds = tf.data.Dataset.from_tensor_slices(wsi_images)
