@@ -18,9 +18,9 @@ def get_images(directory):
 
     # Mapping multilabel (es: biphasic = epithelioid + sarcomatoid)
     mapping = {
-        "epithelioid": [1, 0],
-        "sarcomatoid": [0, 1],
-        "biphasic": [1, 1]
+        "epithelioid": [1, 0, 0],
+        "sarcomatoid": [0, 1, 0],
+        "biphasic": [0, 0, 1]
     }
 
     for class_dir in os.listdir(directory):
@@ -88,6 +88,7 @@ def extract_and_save_features(patches_dir, backbone_model, save_path, batch_size
     print(f"Saving features to {save_path}")
     np.savez_compressed(os.path.join(save_path, "features"), **features_dict)
     print(f"Features saved in {save_path}")
+    return features_dict
 
 
 def load_npz_data(npz_path):
@@ -102,7 +103,7 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         self.attn_U = [tf.keras.layers.Dense(1) for _ in range(num_heads)]
         self.classifier = tf.keras.Sequential([
             tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(num_classes, activation='sigmoid')  # multi-label output
+            tf.keras.layers.Dense(num_classes, activation='softmax')  # multi-label output
         ])
 
     def call(self, x):
@@ -116,37 +117,49 @@ class MultiHeadAttentionMIL(tf.keras.Model):
             head_outputs.append(M)
         bag_repr = tf.concat(head_outputs, axis=-1)  # (batch_size, feature_dim * num_heads)
         return self.classifier(bag_repr)
+    
+
+def load_attention_mil_model(weights_path, input_dim, num_classes=2, num_heads=2, attention_dim=128):
+    model = MultiHeadAttentionMIL(input_dim, num_classes, num_heads, attention_dim)
+    model.build((None, None, input_dim))
+    model.load_weights(weights_path)
+    return model
+
+
+def generate_dataset(features, labels, num_classes=3, batch_size=1):
+        # Dataset preparation
+        def generator():
+            for x, y in zip(features, labels):
+                if x.shape[0] > 0:
+                    yield x, y
+
+        output_signature = (
+            tf.TensorSpec(shape=(None, features[0].shape[-1]), dtype=tf.float32),  # (num_patches, feature_dim)
+            tf.TensorSpec(shape=(num_classes,), dtype=tf.float32)
+        )
+
+        dataset = tf.data.Dataset.from_generator(generator, output_signature=output_signature)
+        dataset = dataset.shuffle(buffer_size=len(labels)).batch(batch_size)
+        return dataset
 
 
 def train_attention_mil(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay=True):
     features, labels = load_npz_data(npz_path)
     input_dim = features[0].shape[-1]
-    num_classes = 2
+    num_classes = 3
 
     def lr_scheduler(epoch):
         factor = pow((1 - (epoch / num_epochs)), 0.9)
         return lr * factor
 
-    # Dataset preparation
-    def generator():
-        for x, y in zip(features, labels):
-            if x.shape[0] > 0:
-                yield x, y
-
-    output_signature = (
-        tf.TensorSpec(shape=(None, input_dim), dtype=tf.float32),  # (num_patches, feature_dim)
-        tf.TensorSpec(shape=(num_classes,), dtype=tf.float32)
-    )
-
-    dataset = tf.data.Dataset.from_generator(generator, output_signature=output_signature)
-    dataset = dataset.shuffle(buffer_size=len(labels)).batch(batch_size)
+    dataset = generate_dataset(features, labels, num_classes, batch_size)
 
     model = MultiHeadAttentionMIL(input_dim, num_classes)
     optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
     model.compile(
         optimizer=optimizer,
-        loss=tf.keras.losses.BinaryCrossentropy(),
-        metrics=[tf.keras.metrics.AUC(multi_label=True, name='auc')]
+        loss=tf.keras.losses.CategoricalCrossentropy(),
+        metrics=['accuracy', tf.keras.metrics.AUC()]
     )
 
     # Callbacks

@@ -115,6 +115,7 @@ class SimCLRTrainer(tf.keras.Model):
 
         return {"loss": loss}
 
+
 def nt_xent_loss(proj_1, proj_2, temperature):
     batch_size = tf.shape(proj_1)[0]
 
