@@ -18,9 +18,9 @@ def get_images(directory):
 
     # Mapping multilabel (es: biphasic = epithelioid + sarcomatoid)
     mapping = {
-        "epithelioid": [1, 0, 0],
-        "sarcomatoid": [0, 1, 0],
-        "biphasic": [0, 0, 1]
+        "epithelioid": [1, 0],
+        "sarcomatoid": [0, 1],
+        "biphasic": [1, 1]
     }
 
     for class_dir in os.listdir(directory):
@@ -103,7 +103,7 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         self.attn_U = [tf.keras.layers.Dense(1) for _ in range(num_heads)]
         self.classifier = tf.keras.Sequential([
             tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(num_classes, activation='softmax')  # multi-label output
+            tf.keras.layers.Dense(num_classes, activation='sigmoid')  # multi-label output
         ])
 
     def call(self, x):
@@ -126,7 +126,7 @@ def load_attention_mil_model(weights_path, input_dim, num_classes=2, num_heads=2
     return model
 
 
-def generate_dataset(features, labels, num_classes=3, batch_size=1):
+def generate_dataset(features, labels, num_classes=2, batch_size=1):
         # Dataset preparation
         def generator():
             for x, y in zip(features, labels):
@@ -146,7 +146,7 @@ def generate_dataset(features, labels, num_classes=3, batch_size=1):
 def train_attention_mil(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay=True):
     features, labels = load_npz_data(npz_path)
     input_dim = features[0].shape[-1]
-    num_classes = 3
+    num_classes = 2
 
     def lr_scheduler(epoch):
         factor = pow((1 - (epoch / num_epochs)), 0.9)
@@ -158,8 +158,8 @@ def train_attention_mil(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay
     optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
     model.compile(
         optimizer=optimizer,
-        loss=tf.keras.losses.CategoricalCrossentropy(),
-        metrics=['accuracy', tf.keras.metrics.AUC()]
+        loss=tf.keras.losses.BinaryCrossentropy(),
+        metrics=[tf.keras.metrics.AUC(multi_label=True, name='auc')]
     )
 
     # Callbacks
