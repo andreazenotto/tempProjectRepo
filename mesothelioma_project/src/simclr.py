@@ -4,11 +4,11 @@ import keras_hub
 
 
 def add_gaussian_noise(image, mean=0.0, stddev=10.0):
+    image = tf.cast(image, tf.float32)  # mantieni valori in [0,255]
     noise = tf.random.normal(shape=tf.shape(image), mean=mean, stddev=stddev, dtype=tf.float32)
-    image = tf.cast(image, tf.float32)
     noisy_image = image + noise
     noisy_image = tf.clip_by_value(noisy_image, 0.0, 255.0)
-    return tf.cast(noisy_image, tf.uint8)
+    return noisy_image
 
 
 def augment(image):
@@ -23,7 +23,6 @@ def augment(image):
     image = tf.image.random_contrast(image, lower=0.8, upper=1.2)
     # gaussian noise
     image = add_gaussian_noise(image)
-
     return image
 
 
@@ -32,6 +31,8 @@ def process_image(image_path):
     image = tf.image.decode_png(image, channels=3)
     view1 = augment(image)
     view2 = augment(image)
+    view1 = tf.keras.applications.resnet.preprocess_input(view1)
+    view2 = tf.keras.applications.resnet.preprocess_input(view2)
     return view1, view2
 
 
@@ -143,8 +144,9 @@ def nt_xent_loss(proj_1, proj_2, temperature):
 
 
 # end epoch = 20 is due to the fact that kaggle only hanlde 20 epochs; total_epochs can be 40 or 60, to not restart the training more than 2 times
-def train_simclr(dataset, resnet_version='resnet_50_imagenet', start_epoch = 0, end_epoch = 20, total_epochs = 60, batch_size=128, temperature=0.5, lr=2e-4, lr_decay=True):
+def train_simclr(dataset_dir, resnet_version='resnet_50_imagenet', start_epoch = 0, end_epoch = 20, total_epochs = 40, batch_size=128, temperature=0.5, lr=2e-4, lr_decay=True):
     strategy = tf.distribute.MirroredStrategy()
+    dataset = create_dataset(dataset_dir)
     dataset = shuffle_and_batch(dataset, batch_size)
     model_path = f'simclr_model_epoch{start_epoch}.weights.h5'
 

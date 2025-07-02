@@ -4,11 +4,14 @@ from tqdm import tqdm
 import tensorflow as tf
 import keras_hub
 
+from simclr import augment
 
-def load_image(img_path):
+
+def load_and_augment(img_path):
     image = tf.io.read_file(img_path)
     image = tf.image.decode_png(image, channels=3)
-    # image = tf.image.resize(image, [224, 224])
+    image = augment(image)
+    image = tf.keras.applications.resnet.preprocess_input(image)
     return image
 
 
@@ -16,11 +19,10 @@ def get_images(directory):
     labels = []
     all_images = []
 
-    # Mapping multilabel (es: biphasic = epithelioid + sarcomatoid)
     mapping = {
-        "epithelioid": [1, 0],
-        "sarcomatoid": [0, 1],
-        "biphasic": [1, 1]
+        "epithelioid": [1, 0, 0],
+        "sarcomatoid": [0, 1, 0],
+        "biphasic": [0, 0, 1]
     }
 
     for class_dir in os.listdir(directory):
@@ -36,7 +38,7 @@ def get_images(directory):
                         images.append(img_path)
                 all_images.append(images)
                 labels.append(mapping[class_name])
-                
+
     return all_images, labels
 
 
@@ -51,7 +53,7 @@ def load_model(backbone_weights_path, version='resnet_50_imagenet'):
     return backbone_model
 
 
-def extract_and_save_features(patches_dir, backbone_model, save_path, batch_size=128):
+def extract_features(patches_dir, backbone_model, batch_size):
     all_features = []
     wsi_list, labels = get_images(patches_dir)
     strategy = tf.distribute.MirroredStrategy()
@@ -66,103 +68,89 @@ def extract_and_save_features(patches_dir, backbone_model, save_path, batch_size
         for wsi_images in tqdm(wsi_list, desc="Extracting features"):
             features_list = []
             path_ds = tf.data.Dataset.from_tensor_slices(wsi_images)
-            image_ds = path_ds.map(lambda x: load_image(x), num_parallel_calls=tf.data.AUTOTUNE)
+            image_ds = path_ds.map(load_and_augment, num_parallel_calls=tf.data.AUTOTUNE)
             image_ds = image_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
-            
-            # Distribute the dataset
+
             dist_ds = strategy.experimental_distribute_dataset(image_ds)
 
             for dist_batch in dist_ds:
                 per_replica_features = strategy.run(extract_step, args=(dist_batch,))
-                # Aggregate results from all replicas
                 batch_features = tf.concat(strategy.gather(per_replica_features, axis=0), axis=0)
                 features_list.extend(batch_features.numpy())
 
             all_features.append(np.array(features_list))
 
-    features_dict = {
-        "features": np.array(all_features, dtype=object),
-        "labels": np.array(labels, dtype=np.float32)
-    }
-
-    print(f"Saving features to {save_path}")
-    np.savez_compressed(os.path.join(save_path, "features"), **features_dict)
-    print(f"Features saved in {save_path}")
-    return features_dict
-
-
-def load_npz_data(npz_path):
-    data = np.load(npz_path, allow_pickle=True)
-    return data['features'], data['labels']
+    return np.array(all_features, dtype=object), np.array(labels, dtype=np.float32)
 
 
 class MultiHeadAttentionMIL(tf.keras.Model):
-    def __init__(self, input_dim, num_classes, num_heads=2, attention_dim=128):
+    def __init__(self, num_heads=4, attention_dim=128, projection_dim=128, num_classes=3, dropout_rate=0.2):
         super(MultiHeadAttentionMIL, self).__init__()
-        self.attn_V = [tf.keras.layers.Dense(attention_dim, activation='tanh') for _ in range(num_heads)]
-        self.attn_U = [tf.keras.layers.Dense(1) for _ in range(num_heads)]
-        self.classifier = tf.keras.Sequential([
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(num_classes, activation='sigmoid')  # multi-label output
-        ])
+        self.mha = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=attention_dim)
+        self.norm = tf.keras.layers.LayerNormalization()
+        self.dropout = tf.keras.layers.Dropout(dropout_rate)
+        self.projection = tf.keras.layers.Dense(projection_dim, activation='relu')
+        self.classifier = tf.keras.layers.Dense(num_classes, activation='softmax')
 
-    def call(self, x):
-        head_outputs = []
-        for V, U in zip(self.attn_V, self.attn_U):
-            # x shape: (batch_size, num_patches, feature_dim)
-            A = U(V(x))  # shape: (batch_size, num_patches, 1)
-            A = tf.nn.softmax(tf.transpose(A, perm=[0, 2, 1]), axis=-1)  # (batch_size, 1, num_patches)
-            M = tf.matmul(A, x)  # (batch_size, 1, feature_dim)
-            M = tf.squeeze(M, axis=1)  # (batch_size, feature_dim)
-            head_outputs.append(M)
-        bag_repr = tf.concat(head_outputs, axis=-1)  # (batch_size, feature_dim * num_heads)
-        return self.classifier(bag_repr)
-    
-
-def load_attention_mil_model(weights_path, input_dim, num_classes=2, num_heads=2, attention_dim=128):
-    model = MultiHeadAttentionMIL(input_dim, num_classes, num_heads, attention_dim)
-    model.build((None, None, input_dim))
-    model.load_weights(weights_path)
-    return model
+    def call(self, x, training=False):
+        attn_output = self.mha(x, x, training=training)
+        x_residual = x + attn_output
+        x_norm = self.norm(x_residual)
+        x_norm = self.dropout(x_norm, training=training)
+        pooled = tf.reduce_mean(x_norm, axis=1)
+        proj = self.projection(pooled)
+        return self.classifier(proj)
 
 
-def generate_dataset(features, labels, num_classes=2, batch_size=1):
-        # Dataset preparation
-        def generator():
-            for x, y in zip(features, labels):
-                if x.shape[0] > 0:
-                    yield x, y
+def generate_dataset(features, labels, num_classes=3, batch_size=1):
+    def generator():
+        for x, y in zip(features, labels):
+            if x.shape[0] > 0:
+                yield x, y
 
-        output_signature = (
-            tf.TensorSpec(shape=(None, features[0].shape[-1]), dtype=tf.float32),  # (num_patches, feature_dim)
-            tf.TensorSpec(shape=(num_classes,), dtype=tf.float32)
-        )
-
-        dataset = tf.data.Dataset.from_generator(generator, output_signature=output_signature)
-        dataset = dataset.shuffle(buffer_size=len(labels)).batch(batch_size)
-        return dataset
-
-
-def train_attention_mil(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay=True):
-    features, labels = load_npz_data(npz_path)
-    input_dim = features[0].shape[-1]
-    num_classes = 2
-
-    def lr_scheduler(epoch):
-        factor = pow((1 - (epoch / num_epochs)), 0.9)
-        return lr * factor
-
-    dataset = generate_dataset(features, labels, num_classes, batch_size)
-
-    model = MultiHeadAttentionMIL(input_dim, num_classes)
-    optimizer = tf.keras.optimizers.AdamW(learning_rate=lr, weight_decay=1e-5)
-    model.compile(
-        optimizer=optimizer,
-        loss=tf.keras.losses.BinaryCrossentropy(),
-        metrics=[tf.keras.metrics.AUC(multi_label=True, name='auc')]
+    output_signature = (
+        tf.TensorSpec(shape=(None, features[0].shape[-1]), dtype=tf.float32),
+        tf.TensorSpec(shape=(num_classes,), dtype=tf.float32)
     )
 
-    # Callbacks
+    dataset = tf.data.Dataset.from_generator(generator, output_signature=output_signature)
+    dataset = dataset.shuffle(buffer_size=len(labels)).batch(batch_size)
+    return dataset
+
+
+def crossfolding(features, labels, validation_split=0.2):
+    n_samples = len(features)
+    n_val = int(n_samples * validation_split)
+    indices = np.random.permutation(n_samples)
+    val_indices = indices[:n_val]
+    train_indices = indices[n_val:]
+    
+    train_features = [features[i] for i in train_indices]
+    train_labels = [labels[i] for i in train_indices]
+    val_features = [features[i] for i in val_indices]
+    val_labels = [labels[i] for i in val_indices]
+
+    train_dataset = generate_dataset(train_features, train_labels)
+    val_dataset = generate_dataset(val_features, val_labels)
+    return train_dataset, val_dataset
+
+
+def train_attention_mil(patches_dir, backbone_weights_dir, num_epochs=20, initial_lr=1e-4):
+    backbone_model = load_model(backbone_weights_dir)
+    model = MultiHeadAttentionMIL(num_classes=3)
+    optimizer = tf.keras.optimizers.AdamW(learning_rate=initial_lr, weight_decay=1e-5)
+    model.compile(
+        optimizer=optimizer,
+        loss=tf.keras.losses.CategoricalCrossentropy(),
+        metrics=[
+            'accuracy', 
+            tf.keras.metrics.Precision(name='precision'),
+            tf.keras.metrics.Recall(name='recall'),
+            tf.keras.metrics.AUC(name='auc'),
+            tf.keras.metrics.F1Score(name='f1_score')
+        ]
+    )
+
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath='best_attention_mil.weights.h5',
         save_best_only=True,
@@ -171,11 +159,21 @@ def train_attention_mil(npz_path, num_epochs=50, batch_size=1, lr=1e-4, lr_decay
         save_weights_only=True
     )
 
-    callbacks = [checkpoint_callback]
-    if lr_decay:
-        callbacks.append(tf.keras.callbacks.LearningRateScheduler(lr_scheduler))
+    for epoch in range(num_epochs):
+        print(f"\nEpoch {epoch+1}/{num_epochs}")
 
-    # Fit model
-    model.fit(dataset, epochs=num_epochs, callbacks=callbacks)
-    
-    return model
+        # Estrazione features con augmentazione
+        features, labels = extract_features(patches_dir, backbone_model, batch_size=256)
+
+        # new_lr = initial_lr * (0.95 ** epoch)
+        # if isinstance(model.optimizer.learning_rate, tf.Variable):
+        #     model.optimizer.learning_rate.assign(new_lr)
+        # else:
+        #     model.optimizer.learning_rate = new_lr
+        # print(f"Learning rate set to {new_lr:.6f}")
+
+        # dataset = generate_dataset(features, labels, num_classes=3, batch_size=1)
+
+        train_ds, val_ds = crossfolding(features, labels)
+
+        model.fit(train_ds, validation_data=val_ds, epochs=1, callbacks=[checkpoint_callback])
