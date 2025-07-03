@@ -1,7 +1,9 @@
 import os
 import tensorflow as tf
-import keras_hub
-
+from tensorflow.keras.applications.resnet50 import (
+    ResNet50,
+    preprocess_input,
+)
 
 def add_gaussian_noise(image, mean=0.0, stddev=10.0):
     image = tf.cast(image, tf.float32)  # mantieni valori in [0,255]
@@ -31,8 +33,9 @@ def process_image(image_path):
     image = tf.image.decode_png(image, channels=3)
     view1 = augment(image)
     view2 = augment(image)
-    view1 = tf.keras.applications.resnet.preprocess_input(view1)
-    view2 = tf.keras.applications.resnet.preprocess_input(view2)
+    # Preprocess for ResNet50
+    view1 = preprocess_input(view1)
+    view2 = preprocess_input(view2)
     return view1, view2
 
 
@@ -65,29 +68,19 @@ def create_dataset(directory):
     return image_ds
  
 
-def build_model(version='resnet_50_imagenet'): 
-    # version = 'resnet_18_imagenet' or 'resnet_50_imagenet'
-    base_model = keras_hub.models.ResNetBackbone.from_preset(
-        version,
-        input_shape=(224, 224, 3),
-        include_rescaling=False
-    )
-    
-    base_model.trainable = True
+def build_model():
+    # Load ResNet50 without top layers
+    base_model = ResNet50(weights='imagenet', include_top=False)
+    inputs = base_model.input
+    x = base_model.output
+    x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
-    inputs = tf.keras.Input(shape=(224, 224, 3))
-    features = base_model(inputs)
-    features = tf.keras.layers.GlobalAveragePooling2D()(features)
-
-    # Projection head come nel paper
-    if version == 'resnet_18_imagenet':
-        x = tf.keras.layers.Dense(512, activation='relu')(features)
-    elif version == 'resnet_50_imagenet':
-        x = tf.keras.layers.Dense(2048, activation='relu')(features)
+    # Projection Head
+    x = tf.keras.layers.Dense(2048, activation='relu')(x)
     outputs = tf.keras.layers.Dense(128)(x)
 
-    full_model = tf.keras.Model(inputs, outputs)
-    return full_model
+    model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+    return model
 
 
 class SimCLRTrainer(tf.keras.Model):
@@ -144,7 +137,7 @@ def nt_xent_loss(proj_1, proj_2, temperature):
 
 
 # end epoch = 20 is due to the fact that kaggle only hanlde 20 epochs; total_epochs can be 40 or 60, to not restart the training more than 2 times
-def train_simclr(dataset_dir, resnet_version='resnet_50_imagenet', start_epoch = 0, end_epoch = 20, total_epochs = 40, batch_size=128, temperature=0.5, lr=2e-4, lr_decay=True):
+def train_simclr(dataset_dir, start_epoch = 0, end_epoch = 20, total_epochs = 40, batch_size=128, temperature=0.5, lr=2e-4, lr_decay=True):
     strategy = tf.distribute.MirroredStrategy()
     dataset = create_dataset(dataset_dir)
     dataset = shuffle_and_batch(dataset, batch_size)
@@ -156,8 +149,8 @@ def train_simclr(dataset_dir, resnet_version='resnet_50_imagenet', start_epoch =
     lr = lr_scheduler(start_epoch) if lr_decay else lr
    
     with strategy.scope():
-        full_model = build_model(resnet_version)
-        simclr_model = SimCLRTrainer(full_model, temperature)
+        backbone = build_model()
+        simclr_model = SimCLRTrainer(backbone, temperature)
         if start_epoch > 0: 
             print(f"Resuming from epoch {start_epoch} with LR={lr:.6f}")
             simclr_model.build(input_shape=(None, 224, 224, 3))
@@ -187,7 +180,8 @@ def train_simclr(dataset_dir, resnet_version='resnet_50_imagenet', start_epoch =
         print("Saving the best backbone weights...")
         simclr_model.build(input_shape=(None, 224, 224, 3))
         simclr_model.load_weights('best_simclr_model.weights.h5')
-        simclr_model.encoder.layers[1].save_weights("best_backbone.weights.h5")
+        new_model = tf.keras.models.Model(inputs=simclr_model.encoder.inputs, outputs=simclr_model.encoder.layers[-3].output)
+        new_model.save_weights("best_backbone.weights.h5")
     else:
         print("Training completed. Saving the final model weights...")
         simclr_model.save_weights(f'simclr_model_epoch{end_epoch}.weights.h5')

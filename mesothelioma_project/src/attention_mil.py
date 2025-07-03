@@ -2,7 +2,10 @@ import os
 import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
-import keras_hub
+from tensorflow.keras.applications.resnet50 import (
+    ResNet50,
+    preprocess_input,
+)
 
 from simclr import augment
 
@@ -11,7 +14,7 @@ def load_and_augment(img_path):
     image = tf.io.read_file(img_path)
     image = tf.image.decode_png(image, channels=3)
     image = augment(image)
-    image = tf.keras.applications.resnet.preprocess_input(image)
+    image = preprocess_input(image)
     return image
 
 
@@ -40,17 +43,6 @@ def get_images(directory):
                 labels.append(mapping[class_name])
 
     return all_images, labels
-
-
-def load_model(backbone_weights_path, version='resnet_50_imagenet'): 
-    # version = 'resnet_18_imagenet' or 'resnet_50_imagenet'
-    backbone_model = keras_hub.models.ResNetBackbone.from_preset(
-        version,
-        input_shape=(224, 224, 3),
-        include_rescaling=False
-    )
-    backbone_model.load_weights(backbone_weights_path)
-    return backbone_model
 
 
 def extract_features(patches_dir, backbone_model, batch_size):
@@ -143,7 +135,9 @@ def crossfolding(features, labels, validation_split=0.2):
 
 
 def train_attention_mil(patches_dir, backbone_weights_dir, num_epochs=20, initial_lr=1e-4):
-    backbone_model = load_model(backbone_weights_dir)
+    backbone = ResNet50(include_top=False, weights=None, pooling="avg")
+    backbone.load_weights(backbone_weights_dir)
+    backbone.trainable = False  # Freeze the backbone model
     model = MultiHeadAttentionMIL(num_classes=3)
     optimizer = tf.keras.optimizers.AdamW(learning_rate=initial_lr, weight_decay=1e-5)
     model.compile(
@@ -170,7 +164,7 @@ def train_attention_mil(patches_dir, backbone_weights_dir, num_epochs=20, initia
         print(f"\nEpoch {epoch+1}/{num_epochs}")
 
         # Estrazione features con augmentazione
-        features, labels = extract_features(patches_dir, backbone_model, batch_size=256)
+        features, labels = extract_features(patches_dir, backbone, batch_size=256)
 
         # new_lr = initial_lr * (0.95 ** epoch)
         # if isinstance(model.optimizer.learning_rate, tf.Variable):
