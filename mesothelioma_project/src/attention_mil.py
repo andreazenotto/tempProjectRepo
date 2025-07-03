@@ -178,3 +178,4 @@ def train_attention_mil(patches_dir, backbone_weights_dir, num_epochs=20, initia
         train_ds, val_ds = crossfolding(features, labels)
 
         model.fit(train_ds, validation_data=val_ds, epochs=1, callbacks=[checkpoint_callback])
+        

@@ -5,6 +5,7 @@ from tensorflow.keras.applications.resnet50 import (
     preprocess_input,
 )
 
+
 def add_gaussian_noise(image, mean=0.0, stddev=10.0):
     image = tf.cast(image, tf.float32)  # mantieni valori in [0,255]
     noise = tf.random.normal(shape=tf.shape(image), mean=mean, stddev=stddev, dtype=tf.float32)
