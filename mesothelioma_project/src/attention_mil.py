@@ -94,13 +94,6 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         return self.classifier(proj)
     
 
-def load_attention_mil_model(weights_path, input_dim, num_classes=3, num_heads=4, attention_dim=128):
-    model = MultiHeadAttentionMIL(num_classes)
-    model.build((None, None, input_dim))
-    model.load_weights(weights_path)
-    return model
-
-
 def generate_dataset(features, labels, num_classes=3, batch_size=1):
     def generator():
         for x, y in zip(features, labels):
