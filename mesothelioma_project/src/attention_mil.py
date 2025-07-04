@@ -54,7 +54,6 @@ def extract_features(patches_dir, backbone_model, batch_size):
         @tf.function
         def extract_step(batch):
             features = backbone_model(batch, training=False)
-            features = tf.keras.layers.GlobalAveragePooling2D()(features)
             return features
 
         for wsi_images in tqdm(wsi_list, desc="Extracting features"):
