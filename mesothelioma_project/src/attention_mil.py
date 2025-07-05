@@ -127,9 +127,12 @@ def crossfolding(features, labels, validation_split=0.2):
     return train_dataset, val_dataset
 
 
-def train_attention_mil(patches_dir, backbone_weights_dir, num_epochs=20, initial_lr=1e-4):
-    backbone = ResNet50(include_top=False, weights=None, pooling="avg")
-    backbone.load_weights(backbone_weights_dir)
+def train_attention_mil(patches_dir, backbone_weights_dir=None, num_epochs=20, initial_lr=1e-4):
+    if backbone_weights_dir is None:
+        backbone = ResNet50(include_top=False, weights='imagenet', pooling="avg")
+    else:
+        backbone = ResNet50(include_top=False, weights=None, pooling="avg")
+        backbone.load_weights(backbone_weights_dir)
     backbone.trainable = False  # Freeze the backbone model
     model = MultiHeadAttentionMIL(num_classes=3)
     optimizer = tf.keras.optimizers.AdamW(learning_rate=initial_lr, weight_decay=1e-5)
