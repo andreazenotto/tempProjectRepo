@@ -25,7 +25,8 @@ def get_images(directory):
     mapping = {
         "epithelioid": [1, 0, 0],
         "sarcomatoid": [0, 1, 0],
-        "biphasic": [0, 0, 1]
+        "biphasic": [0, 0, 1],
+        "ood": [0, 0, 0]  # Out of distribution
     }
 
     for class_dir in os.listdir(directory):
