@@ -76,14 +76,14 @@ def extract_features(patches_dir, backbone_model, batch_size):
 
 
 class MultiHeadAttentionMIL(tf.keras.Model):
-    def __init__(self, num_heads=4, attention_dim=128, projection_dim=128, num_classes=3, dropout_rate=0.2, temperature=0.5):
+    def __init__(self, num_heads=4, attention_dim=128, projection_dim=128, num_classes=3, dropout_rate=0.2):
         super(MultiHeadAttentionMIL, self).__init__()
         self.mha = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=attention_dim)
         self.norm = tf.keras.layers.LayerNormalization()
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
         self.projection = tf.keras.layers.Dense(projection_dim, activation='relu')
-        self.logits_layer = tf.keras.layers.Dense(num_classes)
-        self.temperature = temperature
+        self.classifier = tf.keras.layers.Dense(num_classes, activation='softmax')
+        
 
     def call(self, x, training=False):
         attn_output = self.mha(x, x, training=training)
@@ -92,8 +92,7 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         x_norm = self.dropout(x_norm, training=training)
         pooled = tf.reduce_mean(x_norm, axis=1)
         proj = self.projection(pooled)
-        logits = self.logits_layer(proj)
-        return tf.nn.softmax(logits / self.temperature)
+        return self.classifier(proj)
 
     
 def generate_dataset(features, labels, num_classes=3, batch_size=1):
