@@ -76,13 +76,14 @@ def extract_features(patches_dir, backbone_model, batch_size):
 
 
 class MultiHeadAttentionMIL(tf.keras.Model):
-    def __init__(self, num_heads=4, attention_dim=128, projection_dim=128, num_classes=3, dropout_rate=0.2):
+    def __init__(self, num_heads=4, attention_dim=128, projection_dim=128, num_classes=3, dropout_rate=0.2, temperature=0.5):
         super(MultiHeadAttentionMIL, self).__init__()
         self.mha = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=attention_dim)
         self.norm = tf.keras.layers.LayerNormalization()
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
         self.projection = tf.keras.layers.Dense(projection_dim, activation='relu')
-        self.classifier = tf.keras.layers.Dense(num_classes, activation='softmax')
+        self.logits_layer = tf.keras.layers.Dense(num_classes)
+        self.temperature = temperature
 
     def call(self, x, training=False):
         attn_output = self.mha(x, x, training=training)
@@ -91,9 +92,10 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         x_norm = self.dropout(x_norm, training=training)
         pooled = tf.reduce_mean(x_norm, axis=1)
         proj = self.projection(pooled)
-        return self.classifier(proj)
-    
+        logits = self.logits_layer(proj)
+        return tf.nn.softmax(logits / self.temperature)
 
+    
 def generate_dataset(features, labels, num_classes=3, batch_size=1):
     def generator():
         for x, y in zip(features, labels):
@@ -134,7 +136,7 @@ def train_attention_mil(patches_dir, backbone_weights_dir=None, num_epochs=20, i
         backbone = ResNet50(include_top=False, weights=None, pooling="avg")
         backbone.load_weights(backbone_weights_dir)
     backbone.trainable = False  # Freeze the backbone model
-    model = MultiHeadAttentionMIL(num_classes=3)
+    model = MultiHeadAttentionMIL()
     optimizer = tf.keras.optimizers.AdamW(learning_rate=initial_lr, weight_decay=1e-5)
     model.compile(
         optimizer=optimizer,
