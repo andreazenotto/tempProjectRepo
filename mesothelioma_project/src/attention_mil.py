@@ -83,7 +83,6 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
         self.projection = tf.keras.layers.Dense(projection_dim, activation='relu')
         self.classifier = tf.keras.layers.Dense(num_classes, activation='softmax')
-        
 
     def call(self, x, training=False):
         attn_output = self.mha(x, x, training=training)
@@ -93,8 +92,8 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         pooled = tf.reduce_mean(x_norm, axis=1)
         proj = self.projection(pooled)
         return self.classifier(proj)
-
     
+
 def generate_dataset(features, labels, num_classes=3, batch_size=1):
     def generator():
         for x, y in zip(features, labels):
@@ -135,7 +134,7 @@ def train_attention_mil(patches_dir, backbone_weights_dir=None, num_epochs=20, i
         backbone = ResNet50(include_top=False, weights=None, pooling="avg")
         backbone.load_weights(backbone_weights_dir)
     backbone.trainable = False  # Freeze the backbone model
-    model = MultiHeadAttentionMIL()
+    model = MultiHeadAttentionMIL(num_classes=3)
     optimizer = tf.keras.optimizers.AdamW(learning_rate=initial_lr, weight_decay=1e-5)
     model.compile(
         optimizer=optimizer,
