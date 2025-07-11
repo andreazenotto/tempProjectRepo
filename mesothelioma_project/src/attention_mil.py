@@ -6,8 +6,10 @@ from tensorflow.keras.applications.resnet50 import (
     ResNet50,
     preprocess_input,
 )
-
 from simclr import augment
+
+tf.keras.utils.set_random_seed(10)
+tf.config.experimental.enable_op_determinism()
 
 
 def load_and_augment(img_path):
@@ -76,13 +78,14 @@ def extract_features(patches_dir, backbone_model, batch_size):
 
 
 class MultiHeadAttentionMIL(tf.keras.Model):
-    def __init__(self, num_heads=4, attention_dim=128, projection_dim=128, num_classes=3, dropout_rate=0.2):
-        super(MultiHeadAttentionMIL, self).__init__()
+    def __init__(self, num_heads=4, attention_dim=128, projection_dim=128, num_classes=3, dropout_rate=0.2, **kwargs):
+        super(MultiHeadAttentionMIL, self).__init__(**kwargs)
         self.mha = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=attention_dim)
         self.norm = tf.keras.layers.LayerNormalization()
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
         self.projection = tf.keras.layers.Dense(projection_dim, activation='relu')
         self.classifier = tf.keras.layers.Dense(num_classes, activation='softmax')
+
 
     def call(self, x, training=False):
         attn_output = self.mha(x, x, training=training)
@@ -93,8 +96,23 @@ class MultiHeadAttentionMIL(tf.keras.Model):
         proj = self.projection(pooled)
         return self.classifier(proj)
     
+    def get_config(self):
+        config = super(MultiHeadAttentionMIL, self).get_config()
+        config.update({
+            "num_heads": self.mha.num_heads,
+            "attention_dim": self.mha.key_dim,
+            "projection_dim": self.projection.units,
+            "num_classes": self.classifier.units,
+            "dropout_rate": self.dropout.rate
+        })
+        return config
 
-def generate_dataset(features, labels, num_classes=3, batch_size=1):
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+
+def generate_dataset(features, labels, num_classes=3, batch_size=1, seed=10):
     def generator():
         for x, y in zip(features, labels):
             if x.shape[0] > 0:
@@ -106,7 +124,7 @@ def generate_dataset(features, labels, num_classes=3, batch_size=1):
     )
 
     dataset = tf.data.Dataset.from_generator(generator, output_signature=output_signature)
-    dataset = dataset.shuffle(buffer_size=len(labels)).batch(batch_size)
+    dataset = dataset.shuffle(buffer_size=len(labels), seed=seed).batch(batch_size)
     return dataset
 
 
@@ -149,11 +167,10 @@ def train_attention_mil(patches_dir, backbone_weights_dir=None, num_epochs=20, i
     )
 
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-        filepath='best_attention_mil.weights.h5',
+        filepath='best_attention_mil.h5',
         save_best_only=True,
         monitor='loss',
         mode='min',
-        save_weights_only=True
     )
 
     for epoch in range(num_epochs):
